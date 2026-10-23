@@ -1,0 +1,272 @@
+# Pull request checks on GitHub: the same validation as .gitea/workflows/ci.yml, without publishing.
+# Gitea ignores this directory because .gitea/workflows exists; keep both files in sync.
+# Runs with a read-only token and no secrets, so it is safe for pull requests from forks.
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: '0.13.3'
+  PYTHON_VERSION: '3.15'
+  NODE_VERSION: '24'
+  GO_VERSION: '1.27.x'
+  # Go scanners are verified by the Go checksum database; Python scanners by ci/scanners.txt hashes.
+  GITLEAKS_VERSION: v8.30.1
+  OSV_SCANNER_VERSION: v2.7.0
+  CST_VERSION: v1.22.1
+
+jobs:
+  lint-backend:
+    name: Lint backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+
+  lint-frontend:
+    name: Lint frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm i18n:check
+
+  workflow-lint:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - name: Install scanners (hash-locked)
+        run: |
+          uv venv /tmp/scanners
+          uv pip install --python /tmp/scanners/bin/python --require-hashes -r ci/scanners.txt
+          echo "/tmp/scanners/bin" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: actionlint .gitea/workflows/*.yml .github/workflows/*.yml
+      - name: zizmor
+        run: zizmor --offline --min-severity medium .gitea/workflows/*.yml .github/workflows/*.yml
+
+  security-scan:
+    name: Secrets and dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install scanners (hash-locked)
+        run: |
+          uv venv /tmp/scanners
+          uv pip install --python /tmp/scanners/bin/python --require-hashes -r ci/scanners.txt
+          echo "/tmp/scanners/bin" >> "$GITHUB_PATH"
+      - name: Install Go scanners (Go checksum database verified)
+        run: |
+          go install "github.com/zricethezav/gitleaks/v8@${GITLEAKS_VERSION}"
+          go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Gitleaks (full history)
+        run: gitleaks git --redact --exit-code 1 .
+      - name: OSV-Scanner (lockfiles)
+        run: osv-scanner scan source --lockfile backend/uv.lock --lockfile frontend/pnpm-lock.yaml
+      - name: pip-audit (runtime dependencies)
+        working-directory: backend
+        run: |
+          uv export --locked --no-dev --no-emit-project --format requirements-txt > /tmp/requirements.txt
+          pip-audit --strict --require-hashes --disable-pip -r /tmp/requirements.txt
+      - name: pnpm audit
+        working-directory: frontend
+        run: pnpm audit --audit-level high
+      - name: Bandit
+        run: bandit -r backend/src -ll
+      - name: Semgrep
+        # semgrep-core overflows the default 8 MB stack (exits with -11).
+        run: |
+          ulimit -s 65536
+          semgrep scan --metrics off --error --config p/python --config p/typescript --config p/secrets --config p/dockerfile backend/src frontend/src Dockerfile
+      - name: Hadolint
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+  test-backend:
+    name: Test backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - run: uv sync --locked
+      # Unit + integration tests (Cloudflare API and OIDC provider are mocked); also checks the OpenAPI contract.
+      - run: uv run pytest
+
+  test-frontend:
+    name: Test frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  image:
+    name: Build and scan image
+    needs: [lint-backend, lint-frontend, workflow-lint, security-scan, test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (load locally, no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          pull: true
+          provenance: false
+          tags: tunnelgate:candidate
+          build-args: |
+            VERSION=pr-${{ github.event.pull_request.number }}
+            COMMIT=${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Container Structure Test
+        # go install refuses modules with exclude directives; build from the (checksum-verified) module cache.
+        run: |
+          dir="$(go mod download -json "github.com/GoogleContainerTools/container-structure-test@${CST_VERSION}" \
+            | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",$/\1/p')"
+          (cd "$dir" && go build -trimpath -o /tmp/container-structure-test ./cmd/container-structure-test)
+          /tmp/container-structure-test test --image tunnelgate:candidate --config container-structure-test.yaml
+      - name: Smoke test
+        # Checks run inside the smoke container's network namespace (same as the Gitea workflow).
+        run: |
+          docker run -d --name tg-smoke \
+            -e CF_API_TOKEN=dummy -e CF_ACCOUNT_ID=0123456789abcdef0123456789abcdef \
+            -e OIDC_ISSUER=https://auth.example.com -e OIDC_CLIENT_ID=tunnelgate -e OIDC_CLIENT_SECRET=dummy \
+            -e APP_URL=https://localhost -e ALLOWED_GROUPS=HomeAdmins \
+            --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
+            tunnelgate:candidate
+          for _ in $(seq 1 30); do
+            if docker exec tg-smoke python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          docker exec -i tg-smoke python - <<'EOF'
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8000"
+          urllib.request.urlopen(f"{base}/healthz", timeout=5)
+          try:
+              urllib.request.urlopen(f"{base}/api/me", timeout=5)
+              raise SystemExit("/api/me answered without a session")
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 401, f"/api/me returned {exc.code}"
+          headers = urllib.request.urlopen(f"{base}/", timeout=5).headers
+          assert headers.get("content-security-policy"), "missing Content-Security-Policy"
+          print("smoke test ok")
+          EOF
+      - name: OWASP ZAP baseline
+        # -I: warnings do not fail the build; failures do.
+        run: >-
+          docker run --rm --network container:tg-smoke ghcr.io/zaproxy/zaproxy:stable
+          zap-baseline.py -t http://127.0.0.1:8000 -I
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f tg-smoke || true
+      - name: SBOM (Syft)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: tunnelgate:candidate
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: Vulnerability scan (Grype)
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: tunnelgate:candidate
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table

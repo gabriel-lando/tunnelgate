@@ -86,9 +86,9 @@ jobs:
           uv pip install --python /tmp/scanners/bin/python --require-hashes -r ci/scanners.txt
           echo "/tmp/scanners/bin" >> "$GITHUB_PATH"
       - name: actionlint
-        run: actionlint .gitea/workflows/*.yml
+        run: actionlint .gitea/workflows/*.yml .github/workflows/*.yml
       - name: zizmor
-        run: zizmor --offline --min-severity medium .gitea/workflows/*.yml
+        run: zizmor --offline --min-severity medium .gitea/workflows/*.yml .github/workflows/*.yml
 
   security-scan:
     name: Secrets and dependency scan
