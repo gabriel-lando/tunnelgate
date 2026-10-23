@@ -21,7 +21,29 @@
 		onremove: () => void;
 	} = $props();
 
+	// The menu is a popover (top layer): the card's overflow cannot clip it, and the browser closes it on
+	// outside click, Escape or when another menu opens.
+	const menuId = $props.id();
 	let menuOpen = $state(false);
+	let menu = $state<HTMLDivElement>();
+	let trigger = $state<HTMLButtonElement>();
+
+	function placeMenu() {
+		if (!menu || !trigger) return;
+		const r = trigger.getBoundingClientRect();
+		const below = r.bottom + 4 + menu.offsetHeight <= window.innerHeight;
+		menu.style.top = `${below ? r.bottom + 4 : r.top - menu.offsetHeight - 4}px`;
+		menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
+	}
+
+	function pick(action: () => void) {
+		menu?.hidePopover();
+		action();
+	}
+
+	function closeMenu() {
+		if (menuOpen) menu?.hidePopover();
+	}
 
 	const badge = $derived.by(() => {
 		if (route.blocked) return { text: t('route.badge.blocked'), cls: 'bg-danger-soft text-danger-ink' };
@@ -37,6 +59,9 @@
 	const disabledTip = $derived(route.block_disabled_reason ? t(`route.disabled.${route.block_disabled_reason}`) : '');
 	const canEdit = $derived(editable && route.managed);
 </script>
+
+<!-- The menu is positioned once when it opens; close it instead of following the page. -->
+<svelte:window onscroll={closeMenu} onresize={closeMenu} />
 
 <div class="flex items-center gap-1 border-t border-line py-2.5 pr-2 pl-4 sm:gap-3 sm:py-3 sm:pr-5 sm:pl-5">
 	<div class="min-w-0 flex-1">
@@ -84,40 +109,40 @@
 	/>
 
 	{#if canEdit}
-		<div class="relative sm:hidden">
+		<div class="sm:hidden">
 			<button
+				bind:this={trigger}
 				type="button"
 				class="flex h-11 w-9 items-center justify-center rounded-lg text-muted"
 				aria-label={t('route.more', { host: route.hostname })}
 				aria-haspopup="menu"
 				aria-expanded={menuOpen}
-				onclick={() => (menuOpen = !menuOpen)}><Icon name="more" /></button
+				popovertarget={menuId}><Icon name="more" /></button
 			>
-			{#if menuOpen}
-				<div
-					role="menu"
-					class="absolute top-11 right-0 z-20 w-44 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
+			<div
+				bind:this={menu}
+				id={menuId}
+				popover="auto"
+				role="menu"
+				class="inset-auto m-0 w-44 overflow-hidden rounded-xl border border-line bg-surface p-0 text-ink shadow-xl"
+				ontoggle={(e) => {
+					menuOpen = e.newState === 'open';
+					if (menuOpen) placeMenu();
+				}}
+			>
+				<button
+					type="button"
+					role="menuitem"
+					class="flex h-11 w-full items-center gap-2 px-3 text-left hover:bg-surface-2"
+					onclick={() => pick(onclone)}><Icon name="copy" size={16} />{t('route.clone')}</button
 				>
-					<button
-						type="button"
-						role="menuitem"
-						class="flex h-11 w-full items-center gap-2 px-3 text-left hover:bg-surface-2"
-						onclick={() => {
-							menuOpen = false;
-							onclone();
-						}}><Icon name="copy" size={16} />{t('route.clone')}</button
-					>
-					<button
-						type="button"
-						role="menuitem"
-						class="flex h-11 w-full items-center gap-2 px-3 text-left text-danger-ink hover:bg-surface-2"
-						onclick={() => {
-							menuOpen = false;
-							onremove();
-						}}><Icon name="trash" size={16} />{t('route.remove')}</button
-					>
-				</div>
-			{/if}
+				<button
+					type="button"
+					role="menuitem"
+					class="flex h-11 w-full items-center gap-2 px-3 text-left text-danger-ink hover:bg-surface-2"
+					onclick={() => pick(onremove)}><Icon name="trash" size={16} />{t('route.remove')}</button
+				>
+			</div>
 		</div>
 	{/if}
 </div>
