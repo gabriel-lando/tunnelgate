@@ -137,7 +137,10 @@ jobs:
       - name: Bandit
         run: bandit -r backend/src -ll
       - name: Semgrep
-        run: semgrep scan --metrics off --error --config p/python --config p/typescript --config p/secrets --config p/dockerfile backend/src frontend/src Dockerfile
+        # semgrep-core overflows the default 8 MB stack (exits with -11).
+        run: |
+          ulimit -s 65536
+          semgrep scan --metrics off --error --config p/python --config p/typescript --config p/secrets --config p/dockerfile backend/src frontend/src Dockerfile
       - name: Hadolint
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
