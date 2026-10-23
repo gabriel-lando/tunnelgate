@@ -212,3 +212,24 @@ test('screenshots for visual review', async ({ page }, info) => {
 		await page.screenshot({ path: info.outputPath(`dashboard-${scheme}.png`), fullPage: true });
 	}
 });
+
+test('route menu is not clipped by its card and behaves like a menu', async ({ page, isMobile }) => {
+	test.skip(!isMobile, 'the overflow menu is mobile only');
+	await mockApi(page);
+	await page.goto('/');
+	// Last route of its card: the menu extends past the card's bottom edge.
+	await page.getByRole('button', { name: 'More actions for other.elsewhere.org' }).click();
+	const remove = page.getByRole('menuitem', { name: 'Remove route' });
+	await expect(remove).toBeVisible();
+	const box = (await remove.boundingBox())!;
+	const hit = await page.evaluate(
+		([x, y]) => document.elementFromPoint(x!, y!)?.closest('[role=menuitem]')?.textContent ?? '',
+		[box.x + box.width / 2, box.y + box.height / 2]
+	);
+	expect(hit).toContain('Remove route');
+
+	await page.getByRole('button', { name: 'More actions for git.example.com' }).click();
+	await expect(page.getByRole('menu')).toHaveCount(1);
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('menu')).toHaveCount(0);
+});
