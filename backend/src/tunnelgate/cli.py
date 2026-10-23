@@ -19,12 +19,24 @@ from tunnelgate.store import Store
 _DEFAULT_HOST = "0.0.0.0"  # noqa: S104  # nosec B104
 
 
+class _HealthcheckFilter(logging.Filter):
+    """Drop successful /healthz access lines (the container healthcheck runs every 30 s)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5:
+            path, status = args[2], args[4]
+            return not (path == "/healthz" and isinstance(status, int) and status < 400)
+        return True
+
+
 def _setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stdout,
     )
+    logging.getLogger("uvicorn.access").addFilter(_HealthcheckFilter())
 
 
 def _serve(host: str, port: int) -> int:

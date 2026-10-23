@@ -72,3 +72,26 @@ def test_cloudflare_error_exit_code(
     fake.fail_next[("GET", "/zones")] = fail(403, 10000, "Authentication error")
     assert cli.main(["status"]) == 1
     assert "Authentication error" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("path", "status", "kept"),
+    [
+        ("/healthz", 200, False),
+        ("/healthz", 503, True),
+        ("/api/state", 200, True),
+    ],
+)
+def test_healthcheck_access_lines_are_dropped(path: str, status: int, kept: bool) -> None:
+    import logging
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1", "GET", path, "1.1", status),
+        None,
+    )
+    assert cli._HealthcheckFilter().filter(record) is kept
