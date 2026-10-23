@@ -171,6 +171,11 @@ Conventions: code, comments, commit messages and documentation are in English; o
    that was scanned (checksum verified), pushes it, signs it and attaches the SBOM attestation with
    cosign, optionally uploads the SBOM to Dependency-Track and updates the Docker Hub description.
 
+Pull requests on GitHub run [`.github/workflows/pr.yml`](.github/workflows/pr.yml): steps 1–4 above,
+with a read-only token and no secrets, so contributions from forks are validated without being able to
+publish anything. Gitea ignores `.github/workflows` because `.gitea/workflows` exists; keep the two
+workflows in sync (both are linted on every run).
+
 Python scanners are installed from the hash-locked [`ci/scanners.txt`](ci/scanners.txt), Go scanners
 are verified by the Go checksum database. Protect the `main` branch and `v*` tags in Gitea so only you
 can trigger the publish job. The artifact hand-off needs Gitea Actions support for
