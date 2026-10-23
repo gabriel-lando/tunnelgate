@@ -26,6 +26,19 @@ export function filterTunnels(tunnels: Tunnel[], query: string): Tunnel[] {
 		.filter((tn) => tn.routes.length > 0);
 }
 
+// Masonry layout: each card goes to the currently shortest column (height ~ header + one unit per route),
+// so a tall card does not leave a gap under its neighbour as grid rows would.
+export function splitColumns(tunnels: Tunnel[], count: number): Tunnel[][] {
+	const columns: Tunnel[][] = Array.from({ length: count }, () => []);
+	const heights: number[] = new Array<number>(count).fill(0);
+	for (const tunnel of tunnels) {
+		const i = heights.indexOf(Math.min(...heights));
+		columns[i]!.push(tunnel);
+		heights[i]! += 2 + tunnel.routes.length;
+	}
+	return columns;
+}
+
 export function summarize(state: State | null): { tunnels: number; routes: number; blocked: number } {
 	const tunnels = state?.tunnels ?? [];
 	const routes = tunnels.flatMap((tn) => tn.routes);
