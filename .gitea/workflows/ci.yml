@@ -16,6 +16,7 @@ concurrency:
 
 env:
   DOCKERHUB_REPOSITORY: gabriellando/tunnelgate
+  SOURCE_REPOSITORY: gabriel-lando/tunnelgate
   UV_VERSION: '0.13.3'
   PYTHON_VERSION: '3.15'
   NODE_VERSION: '24'
@@ -237,9 +238,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - name: Container Structure Test
+        # go install refuses modules with exclude directives; build from the (checksum-verified) module cache.
         run: |
-          go install "github.com/GoogleContainerTools/container-structure-test/cmd/container-structure-test@${CST_VERSION}"
-          "$(go env GOPATH)/bin/container-structure-test" test --image tunnelgate:candidate --config container-structure-test.yaml
+          dir="$(go mod download -json "github.com/GoogleContainerTools/container-structure-test@${CST_VERSION}" \
+            | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",$/\1/p')"
+          (cd "$dir" && go build -trimpath -o /tmp/container-structure-test ./cmd/container-structure-test)
+          /tmp/container-structure-test test --image tunnelgate:candidate --config container-structure-test.yaml
       - name: Smoke test
         run: |
           docker run -d --name tg-smoke -p 127.0.0.1:8000:8000 \
@@ -334,9 +338,11 @@ jobs:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           DIGEST: ${{ steps.push.outputs.digest }}
+        # Key-pair signing without the public transparency log; cosign 3 needs the legacy signing path for that.
         run: |
-          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false "$DIGEST"
-          cosign attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false --type spdxjson --predicate sbom.spdx.json "$DIGEST"
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --tlog-upload=false "$DIGEST"
+          cosign attest --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --tlog-upload=false \
+            --type spdxjson --predicate sbom.spdx.json "$DIGEST"
       - name: Upload SBOM to Dependency-Track
         if: env.DTRACK_ENABLED == 'true'
         env:
@@ -348,11 +354,18 @@ jobs:
             -H "X-Api-Key: ${DTRACK_API_KEY}" \
             -F "autoCreate=true" -F "projectName=tunnelgate" -F "projectVersion=${TAG}" \
             -F "bom=@sbom.spdx.json"
+      # Docker Hub cannot resolve relative links: point them at the GitHub repository.
+      - name: Prepare Docker Hub README
+        run: |
+          sed -E \
+            -e "s|(!\[[^]]*\])\(([^):#][^):]*)\)|\1(https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/main/\2)|g" \
+            -e "s|\]\(([^):#][^):]*)\)|](https://github.com/${SOURCE_REPOSITORY}/blob/main/\1)|g" \
+            README.md > /tmp/README.dockerhub.md
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.DOCKERHUB_REPOSITORY }}
-          readme-filepath: ./README.md
+          readme-filepath: /tmp/README.dockerhub.md
           short-description: Kill switch and route manager for Cloudflare Tunnels, built for the phone.

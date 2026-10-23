@@ -14,7 +14,7 @@ commandTests:
   - name: runs as non-root
     command: id
     args: ["-u"]
-    expectedOutput: ["^10001$"]
+    expectedOutput: ["^10001\\n?$"]
   - name: cli is installed
     command: tunnelgate
     args: ["--help"]

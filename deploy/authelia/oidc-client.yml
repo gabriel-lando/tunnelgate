@@ -21,7 +21,8 @@ identity_providers:
         token_endpoint_auth_method: client_secret_basic
         userinfo_signed_response_alg: none
 
-# The session cookie must cover both auth.<domain> and tunnelgate.int.<domain>:
+# Only if you also enable forward auth in the SWAG config: the session cookie must cover both
+# auth.<domain> and tunnelgate.int.<domain>. Plain OIDC login does not need it.
 # session:
 #   cookies:
 #     - domain: example.com

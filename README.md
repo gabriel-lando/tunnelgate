@@ -20,7 +20,7 @@ A small, internal-only dashboard that works as a **kill switch** and route manag
 
 Nothing about your tunnels is hardcoded or stored locally: Cloudflare is the source of truth.
 
-![Tunnelgate dashboard](https://raw.githubusercontent.com/gabriel-lando/tunnelgate/main/docs/ui/dashboard-desktop-dark.png)
+![Tunnelgate dashboard](docs/ui/dashboard-desktop-dark.png)
 
 ## How blocking works
 
@@ -67,12 +67,11 @@ Limitations:
   Scope the zone policy to the zones you want to manage. Widening the scope later only needs a new token and a
   restart; new zones appear automatically.
 
-- An OIDC provider. Examples for Authelia and SWAG live in [`deploy/`](https://github.com/gabriel-lando/tunnelgate/blob/main/deploy/) (move them to your
-  infrastructure repository).
+- An OIDC provider with PKCE and a `groups` claim (Authelia example in [`deploy/`](deploy/README.md#2-oidc-provider)).
 
 ## Configuration
 
-All configuration comes from environment variables (see [`.env.example`](https://github.com/gabriel-lando/tunnelgate/blob/main/.env.example)).
+All configuration comes from environment variables (see [`.env.example`](.env.example)).
 
 | Variable                                | Required         | Description                                                                                                                                            |
 | --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -99,8 +98,8 @@ sign-out options instead of a login loop. The API answers `401` for "not signed 
 ## Deployment
 
 Run the container on a host with **no external exposure**, behind your internal reverse proxy, on a
-Docker network shared only with that proxy. See [`compose.example.yaml`](https://github.com/gabriel-lando/tunnelgate/blob/main/compose.example.yaml) and
-[`deploy/swag/tunnelgate.subdomain.conf`](https://github.com/gabriel-lando/tunnelgate/blob/main/deploy/swag/tunnelgate.subdomain.conf).
+Docker network shared only with that proxy. [`deploy/`](deploy/README.md) has a step-by-step guide with a
+compose file, a SWAG proxy config and an Authelia OIDC client.
 
 The container runs as UID 10001, works with a read-only root filesystem, needs no capabilities and stores
 only an SQLite file (audit log and config snapshots) in `/data`.
@@ -156,12 +155,12 @@ Conventions: code, comments, commit messages and documentation are in English; o
 - Lockfiles are enforced (`uv sync --locked`, `pnpm install --frozen-lockfile`).
 - GitHub Actions are pinned by commit SHA; uv is installed in the image with `--require-hashes`;
   pnpm is pinned with its integrity hash in `packageManager`.
-- Renovate ([`renovate.json`](https://github.com/gabriel-lando/tunnelgate/blob/main/renovate.json)) applies the same 3-day quarantine.
+- Renovate ([`renovate.json`](renovate.json)) applies the same 3-day quarantine.
 - A gitleaks pre-commit hook is available: `pre-commit install`.
 
 ## CI/CD
 
-[`.gitea/workflows/ci.yml`](https://github.com/gabriel-lando/tunnelgate/blob/main/.gitea/workflows/ci.yml) runs on every push:
+[`.gitea/workflows/ci.yml`](.gitea/workflows/ci.yml) runs on every push:
 
 1. Lint and static checks: ruff, mypy, svelte-check, eslint, prettier, locale parity, actionlint, zizmor.
 2. Secrets and dependencies: gitleaks (full history), OSV-Scanner, pip-audit, pnpm audit, Bandit, Semgrep, Hadolint.
@@ -172,7 +171,7 @@ Conventions: code, comments, commit messages and documentation are in English; o
    that was scanned (checksum verified), pushes it, signs it and attaches the SBOM attestation with
    cosign, optionally uploads the SBOM to Dependency-Track and updates the Docker Hub description.
 
-Python scanners are installed from the hash-locked [`ci/scanners.txt`](https://github.com/gabriel-lando/tunnelgate/blob/main/ci/scanners.txt), Go scanners
+Python scanners are installed from the hash-locked [`ci/scanners.txt`](ci/scanners.txt), Go scanners
 are verified by the Go checksum database. Protect the `main` branch and `v*` tags in Gitea so only you
 can trigger the publish job. The artifact hand-off needs Gitea Actions support for
 `actions/upload-artifact` v4+; if your Gitea is older, merge the publish steps back into the image job
