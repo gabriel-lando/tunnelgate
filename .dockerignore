@@ -1,0 +1,14 @@
+**
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/build/uv-requirements.txt
+!backend/src/**
+!frontend/package.json
+!frontend/pnpm-lock.yaml
+!frontend/pnpm-workspace.yaml
+!frontend/vite.config.ts
+!frontend/tsconfig.json
+!frontend/src/**
+!frontend/static/**
+**/__pycache__
+**/*.pyc

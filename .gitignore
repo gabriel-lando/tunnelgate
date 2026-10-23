@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node / SvelteKit
+node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+
+# Local data and secrets
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+cosign.key
+
+# Scan and build outputs
+sbom*.json
+*.sarif
+zap-report.*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,33 @@
+# Merge into Authelia's configuration.yml (Authelia 4.38+ syntax).
+# Generate the hashed secret with:
+#   docker run --rm ghcr.io/authelia/authelia:latest authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 128
+# Put the plain value in Tunnelgate's OIDC_CLIENT_SECRET and the digest below.
+identity_providers:
+  oidc:
+    clients:
+      - client_id: tunnelgate
+        client_name: Tunnelgate
+        client_secret: '$pbkdf2-sha512$310000$REPLACE_WITH_GENERATED_DIGEST'
+        public: false
+        # Generic policy only: group membership is enforced by Tunnelgate (ALLOWED_GROUPS).
+        authorization_policy: two_factor
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris:
+          - https://tunnelgate.int.example.com/auth/callback
+        scopes: [openid, profile, email, groups]
+        response_types: [code]
+        grant_types: [authorization_code]
+        token_endpoint_auth_method: client_secret_basic
+        userinfo_signed_response_alg: none
+
+# The session cookie must cover both auth.<domain> and tunnelgate.int.<domain>:
+# session:
+#   cookies:
+#     - domain: example.com
+#       authelia_url: https://auth.example.com
+
+# Nested AD groups: make the group filter follow membership chains, e.g.
+# authentication_backend:
+#   ldap:
+#     groups_filter: '(&(member:1.2.840.113556.1.4.1941:={dn})(objectClass=group))'

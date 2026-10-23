@@ -1,0 +1,68 @@
+[project]
+name = "tunnelgate"
+version = "0.1.0"
+description = "Internal dashboard to list, block and manage Cloudflare Tunnel routes."
+requires-python = ">=3.14"
+dependencies = [
+    "authlib>=1.9.1",
+    "fastapi>=0.150.0",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "pydantic-settings>=2.16.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+tunnelgate = "tunnelgate.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "respx>=0.23.1",
+    "ruff>=0.17.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.3,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Supply-chain quarantine: never resolve versions published less than 3 days ago.
+exclude-newer = "3 days"
+required-version = ">=0.9.17"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF", "ASYNC", "PT", "N", "PL"]
+ignore = ["PLR0913", "PLR2004", "PLR0915", "S101", "PLC0415"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "PLR0915", "PLC0415", "PT018", "E501", "PLR0911", "PLR0912", "SIM102"]
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["authlib.*", "respx.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--strict-markers --cov=tunnelgate --cov-report=term-missing --cov-fail-under=80"
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+
+[tool.coverage.run]
+branch = true
+source = ["tunnelgate"]

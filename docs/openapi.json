@@ -1,0 +1,1068 @@
+{
+  "components": {
+    "schemas": {
+      "About": {
+        "properties": {
+          "cloudflare_ok": {
+            "title": "Cloudflare Ok",
+            "type": "boolean"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "token_expires_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Expires On"
+          },
+          "token_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Status"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "zones": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "version",
+          "commit",
+          "cloudflare_ok",
+          "token_status",
+          "token_expires_on",
+          "zones"
+        ],
+        "title": "About",
+        "type": "object"
+      },
+      "BlockRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "confirm_critical": {
+            "default": false,
+            "title": "Confirm Critical",
+            "type": "boolean"
+          },
+          "hostname": {
+            "maxLength": 253,
+            "title": "Hostname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "blocked"
+        ],
+        "title": "BlockRequest",
+        "type": "object"
+      },
+      "CloneRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "create_blocked": {
+            "default": true,
+            "title": "Create Blocked",
+            "type": "boolean"
+          },
+          "origin_request": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Origin Request",
+            "type": "object"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "service": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Service",
+            "type": "string"
+          },
+          "source_hostname": {
+            "maxLength": 253,
+            "title": "Source Hostname",
+            "type": "string"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Path"
+          },
+          "subdomain": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Subdomain",
+            "type": "string"
+          },
+          "zone_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Zone Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_hostname",
+          "subdomain",
+          "zone_id",
+          "service"
+        ],
+        "title": "CloneRequest",
+        "type": "object"
+      },
+      "ConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "title": "ConfirmRequest",
+        "type": "object"
+      },
+      "Denied": {
+        "properties": {
+          "error": {
+            "const": "forbidden",
+            "default": "forbidden",
+            "title": "Error",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "group",
+              "mfa"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "username"
+        ],
+        "title": "Denied",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Me": {
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "name",
+          "groups",
+          "csrf_token",
+          "expires_at"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
+      "OperationResult": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked",
+            "type": "array"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "skipped": {
+            "description": "Routes left open because they cannot be blocked",
+            "items": {
+              "type": "string"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/State"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Updated state, when known without a new discovery"
+          }
+        },
+        "title": "OperationResult",
+        "type": "object"
+      },
+      "RemoveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "maxLength": 253,
+            "title": "Confirm",
+            "type": "string"
+          },
+          "hostname": {
+            "maxLength": 253,
+            "title": "Hostname",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "hostname",
+          "confirm"
+        ],
+        "title": "RemoveRequest",
+        "type": "object"
+      },
+      "Route": {
+        "properties": {
+          "block_disabled_reason": {
+            "anyOf": [
+              {
+                "const": "no_zone_access",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Disabled Reason"
+          },
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "can_block": {
+            "title": "Can Block",
+            "type": "boolean"
+          },
+          "critical": {
+            "title": "Critical",
+            "type": "boolean"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "managed": {
+            "description": "Rule lives in a remotely managed ingress config",
+            "title": "Managed",
+            "type": "boolean"
+          },
+          "origin_request": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Origin Request",
+            "type": "object"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service"
+          },
+          "wildcard": {
+            "title": "Wildcard",
+            "type": "boolean"
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone"
+          }
+        },
+        "required": [
+          "hostname",
+          "service",
+          "path",
+          "zone",
+          "blocked",
+          "wildcard",
+          "critical",
+          "managed",
+          "can_block",
+          "block_disabled_reason"
+        ],
+        "title": "Route",
+        "type": "object"
+      },
+      "State": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "number"
+          },
+          "tunnels": {
+            "items": {
+              "$ref": "#/components/schemas/Tunnel"
+            },
+            "title": "Tunnels",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/Zone"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tunnels",
+          "zones",
+          "generated_at"
+        ],
+        "title": "State",
+        "type": "object"
+      },
+      "Tunnel": {
+        "properties": {
+          "can_undo": {
+            "title": "Can Undo",
+            "type": "boolean"
+          },
+          "connections": {
+            "title": "Connections",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "remote_managed": {
+            "title": "Remote Managed",
+            "type": "boolean"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/Route"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "down",
+              "inactive",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "connections",
+          "remote_managed",
+          "can_undo",
+          "routes"
+        ],
+        "title": "Tunnel",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Zone": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Zone",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Tunnelgate",
+    "version": "contract"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/about": {
+      "get": {
+        "operationId": "about_api_about_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/About"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          }
+        },
+        "summary": "About"
+      }
+    },
+    "/api/kill-all": {
+      "post": {
+        "operationId": "kill_all_api_kill_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kill All"
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "me_api_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          }
+        },
+        "summary": "Me"
+      }
+    },
+    "/api/routes/block": {
+      "post": {
+        "operationId": "block_api_routes_block_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block"
+      }
+    },
+    "/api/state": {
+      "get": {
+        "operationId": "state_api_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "State"
+      }
+    },
+    "/api/tunnels/{tunnel_id}/block-all": {
+      "post": {
+        "operationId": "block_tunnel_api_tunnels__tunnel_id__block_all_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tunnel_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Tunnel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block Tunnel"
+      }
+    },
+    "/api/tunnels/{tunnel_id}/routes/clone": {
+      "post": {
+        "operationId": "clone_api_tunnels__tunnel_id__routes_clone_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tunnel_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Tunnel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clone"
+      }
+    },
+    "/api/tunnels/{tunnel_id}/routes/remove": {
+      "post": {
+        "operationId": "remove_api_tunnels__tunnel_id__routes_remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tunnel_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Tunnel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove"
+      }
+    },
+    "/api/tunnels/{tunnel_id}/undo": {
+      "post": {
+        "operationId": "undo_api_tunnels__tunnel_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tunnel_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Tunnel Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Denied"
+                }
+              }
+            },
+            "description": "Signed in but not authorized, or CSRF failure"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo"
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+# Example service definition for your infrastructure repository.
+# Tunnelgate publishes no ports: SWAG reaches it over the dedicated "tunnelgate" network.
+services:
+  tunnelgate:
+    image: docker.io/gabriellando/tunnelgate:latest
+    container_name: tunnelgate
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TUNNELGATE_DATA_DIR: /data
+    volumes:
+      - tunnelgate-data:/data
+    networks:
+      - tunnelgate
+    # Resolve auth.<domain> through your internal DNS (split horizon), not the public one.
+    dns:
+      - 192.168.1.1
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tunnelgate-data:
+
+networks:
+  # Shared only by SWAG (internal instance) and Tunnelgate. Attach SWAG to it as an external network.
+  tunnelgate:
+    name: tunnelgate
+    internal: false

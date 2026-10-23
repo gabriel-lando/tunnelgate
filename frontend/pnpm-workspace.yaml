@@ -1,0 +1,7 @@
+# Supply-chain quarantine: only install versions published at least 72 hours ago.
+minimumReleaseAge: 4320
+minimumReleaseAgeStrict: true
+# Never run dependency install scripts unless explicitly allowed here.
+strictDepBuilds: true
+onlyBuiltDependencies: []
+blockExoticSubdeps: true

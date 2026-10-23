@@ -1,0 +1,6 @@
+failure-threshold: warning
+ignored:
+  # Base images use a fixed minor version on purpose; patches come from scheduled rebuilds.
+  - DL3006
+trustedRegistries:
+  - docker.io

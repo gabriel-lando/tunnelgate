@@ -1,0 +1,56 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": [
+		"config:recommended",
+		"helpers:pinGitHubActionDigestsToSemver",
+		"docker:pinDigests"
+	],
+	"minimumReleaseAge": "3 days",
+	"internalChecksFilter": "strict",
+	"prConcurrentLimit": 5,
+	"labels": [
+		"dependencies"
+	],
+	"packageRules": [
+		{
+			"description": "Keep the Python base image on its minor version; bump minors manually.",
+			"matchDatasources": [
+				"docker"
+			],
+			"matchPackageNames": [
+				"python"
+			],
+			"matchUpdateTypes": [
+				"minor",
+				"major"
+			],
+			"enabled": false
+		},
+		{
+			"description": "Node is only a build stage; stay on the LTS major.",
+			"matchDatasources": [
+				"docker"
+			],
+			"matchPackageNames": [
+				"node"
+			],
+			"matchUpdateTypes": [
+				"major"
+			],
+			"enabled": false
+		},
+		{
+			"description": "Group dev tooling updates.",
+			"matchDepTypes": [
+				"devDependencies",
+				"dev"
+			],
+			"groupName": "dev tooling"
+		}
+	],
+	"pip-compile": {
+		"managerFilePatterns": [
+			"/^ci/scanners\\.txt$/"
+		]
+	}
+}

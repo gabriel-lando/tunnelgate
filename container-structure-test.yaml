@@ -1,0 +1,45 @@
+schemaVersion: 2.0.0
+
+metadataTest:
+  user: "10001:10001"
+  exposedPorts: ["8000"]
+  volumes: ["/data"]
+  entrypoint: ["tunnelgate"]
+  cmd: ["serve"]
+  envVars:
+    - key: TUNNELGATE_STATIC_DIR
+      value: /app/static
+
+commandTests:
+  - name: runs as non-root
+    command: id
+    args: ["-u"]
+    expectedOutput: ["^10001$"]
+  - name: cli is installed
+    command: tunnelgate
+    args: ["--help"]
+    expectedOutput: ["block-all", "unblock-all"]
+  - name: no dev tooling in runtime
+    command: sh
+    args: ["-c", "! command -v uv && ! python -c 'import pytest' 2>/dev/null"]
+    exitCode: 0
+
+fileExistenceTests:
+  - name: frontend build
+    path: /app/static/200.html
+    shouldExist: true
+  - name: service worker
+    path: /app/static/service-worker.js
+    shouldExist: true
+  - name: data dir owned by app user
+    path: /data
+    shouldExist: true
+    uid: 10001
+    gid: 10001
+    permissions: "drwx------"
+  - name: no env files baked in
+    path: /app/.env
+    shouldExist: false
+  - name: no source maps
+    path: /app/static/_app/immutable/entry/start.js.map
+    shouldExist: false
