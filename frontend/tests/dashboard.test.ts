@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterTunnels, sortRoutes, summarize } from '../src/lib/dashboard.svelte.ts';
+import { filterTunnels, sortRoutes, splitColumns, summarize } from '../src/lib/dashboard.svelte.ts';
 import type { Route, State, Tunnel } from '../src/lib/types.ts';
 
 const route = (hostname: string, blocked = false, service = 'http://x:1'): Route => ({
@@ -54,5 +54,25 @@ describe('dashboard helpers', () => {
 		expect(sortRoutes(routes, 'alpha').map((r) => r.hostname)).toEqual(['a.example.com', 'z.example.com']);
 		expect(sortRoutes(routes, 'ingress')).toBe(routes);
 		expect(routes[0]?.hostname).toBe('z.example.com');
+	});
+});
+
+describe('splitColumns', () => {
+	const sized = (name: string, count: number) =>
+		tunnel(
+			name,
+			Array.from({ length: count }, (_, i) => route(`r${i}.${name}.example.com`))
+		);
+
+	it('puts each card in the shortest column, so a tall card leaves no gap', () => {
+		const [a, b, c] = [sized('a', 7), sized('b', 11), sized('c', 2)];
+		const names = splitColumns([a, b, c], 2).map((col) => col.map((t) => t.name));
+		expect(names).toEqual([['a', 'c'], ['b']]);
+	});
+
+	it('keeps the original order in a single column', () => {
+		const items = [sized('a', 3), sized('b', 1)];
+		expect(splitColumns(items, 1)).toEqual([items]);
+		expect(splitColumns([], 2)).toEqual([[], []]);
 	});
 });

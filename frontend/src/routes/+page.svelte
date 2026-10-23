@@ -8,7 +8,7 @@
 	import Logo from '#lib/components/Logo.svelte';
 	import RemoveDialog from '#lib/components/RemoveDialog.svelte';
 	import TunnelCard from '#lib/components/TunnelCard.svelte';
-	import { dashboard, filterTunnels, summarize } from '#lib/dashboard.svelte.ts';
+	import { dashboard, filterTunnels, splitColumns, summarize } from '#lib/dashboard.svelte.ts';
 	import { t } from '#lib/i18n/index.svelte.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { CloneRequest, Route, Tunnel } from '#lib/types.ts';
@@ -30,6 +30,9 @@
 
 	const counts = $derived(summarize(dashboard.state));
 	const tunnels = $derived(filterTunnels(dashboard.state?.tunnels ?? [], query));
+	// Two independent columns from Tailwind's lg breakpoint; one column (original order) below it.
+	let wide = $state(false);
+	const columns = $derived(wide ? splitColumns(tunnels, 2) : [tunnels]);
 	const initials = $derived(
 		(session.me?.name ?? '?')
 			.split(/\s+/)
@@ -48,10 +51,15 @@
 		const down = () => (online = false);
 		window.addEventListener('online', up);
 		window.addEventListener('offline', down);
+		const lg = window.matchMedia('(min-width: 64rem)');
+		const resize = () => (wide = lg.matches);
+		resize();
+		lg.addEventListener('change', resize);
 		if (online) void dashboard.load();
 		return () => {
 			window.removeEventListener('online', up);
 			window.removeEventListener('offline', down);
+			lg.removeEventListener('change', resize);
 		};
 	});
 
@@ -254,16 +262,20 @@
 		{/if}
 
 		{#if online && dashboard.state && !dashboard.error}
-			<div class="grid grid-cols-1 items-start gap-4 sm:gap-5 lg:grid-cols-2">
-				{#each tunnels as tunnel (tunnel.id)}
-					<TunnelCard
-						{tunnel}
-						ontoggle={toggle}
-						onclone={(route) => (cloneTarget = { tunnel, route })}
-						onremove={(route) => (removeTarget = { tunnel, route })}
-						onblockall={() => (confirm = { kind: 'tunnel', tunnel })}
-						onundo={() => (confirm = { kind: 'undo', tunnel })}
-					/>
+			<div class="flex items-start gap-4 sm:gap-5">
+				{#each columns as column, i (i)}
+					<div class="flex min-w-0 flex-1 flex-col gap-4 sm:gap-5">
+						{#each column as tunnel (tunnel.id)}
+							<TunnelCard
+								{tunnel}
+								ontoggle={toggle}
+								onclone={(route) => (cloneTarget = { tunnel, route })}
+								onremove={(route) => (removeTarget = { tunnel, route })}
+								onblockall={() => (confirm = { kind: 'tunnel', tunnel })}
+								onundo={() => (confirm = { kind: 'undo', tunnel })}
+							/>
+						{/each}
+					</div>
 				{/each}
 			</div>
 		{/if}
