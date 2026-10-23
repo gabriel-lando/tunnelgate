@@ -245,27 +245,39 @@ jobs:
           (cd "$dir" && go build -trimpath -o /tmp/container-structure-test ./cmd/container-structure-test)
           /tmp/container-structure-test test --image tunnelgate:candidate --config container-structure-test.yaml
       - name: Smoke test
+        # The job may itself run in a container (Gitea act_runner), so published ports are not reachable
+        # on its loopback: checks run inside the smoke container's network namespace instead.
         run: |
-          docker run -d --name tg-smoke -p 127.0.0.1:8000:8000 \
+          docker run -d --name tg-smoke \
             -e CF_API_TOKEN=dummy -e CF_ACCOUNT_ID=0123456789abcdef0123456789abcdef \
             -e OIDC_ISSUER=https://auth.example.com -e OIDC_CLIENT_ID=tunnelgate -e OIDC_CLIENT_SECRET=dummy \
             -e APP_URL=https://localhost -e ALLOWED_GROUPS=HomeAdmins \
             --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true \
             tunnelgate:candidate
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/healthz; then break; fi
+            if docker exec tg-smoke python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)" 2>/dev/null; then break; fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:8000/healthz
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/me)" = "401"
-          curl -fsSI http://127.0.0.1:8000/ | grep -qi "content-security-policy"
+          docker exec -i tg-smoke python - <<'EOF'
+          import urllib.error
+          import urllib.request
+
+          base = "http://127.0.0.1:8000"
+          urllib.request.urlopen(f"{base}/healthz", timeout=5)
+          try:
+              urllib.request.urlopen(f"{base}/api/me", timeout=5)
+              raise SystemExit("/api/me answered without a session")
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 401, f"/api/me returned {exc.code}"
+          headers = urllib.request.urlopen(f"{base}/", timeout=5).headers
+          assert headers.get("content-security-policy"), "missing Content-Security-Policy"
+          print("smoke test ok")
+          EOF
       - name: OWASP ZAP baseline
-        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
-        with:
-          target: http://localhost:8000
-          allow_issue_writing: false
-          fail_action: true
-          cmd_options: -I
+        # -I: warnings do not fail the build; failures do.
+        run: >-
+          docker run --rm --network container:tg-smoke ghcr.io/zaproxy/zaproxy:stable
+          zap-baseline.py -t http://127.0.0.1:8000 -I
       - name: Stop smoke container
         if: always()
         run: docker rm -f tg-smoke || true
