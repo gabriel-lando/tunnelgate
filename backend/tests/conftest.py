@@ -139,9 +139,25 @@ def make_fake() -> FakeCloudflare:
     fake = FakeCloudflare()
     fake.zones = [{"id": ZONE_ID, "name": "example.com"}]
     fake.tunnels = [
-        {"id": T_APPS, "name": "apps", "status": "healthy", "connections": [{}, {}, {}, {}]},
+        {
+            "id": T_APPS,
+            "name": "apps",
+            "status": "healthy",
+            "connections": [
+                *({"client_id": "c1", "client_version": "2026.9.1"} for _ in range(4)),
+                *({"client_id": "c2", "client_version": "2026.10.0"} for _ in range(4)),
+            ],
+        },
         {"id": T_MEDIA, "name": "media", "status": "down", "connections": []},
-        {"id": T_LOCAL, "name": "auth", "status": "healthy", "connections": [{}, {}]},
+        {
+            "id": T_LOCAL,
+            "name": "auth",
+            "status": "healthy",
+            "connections": [
+                {"client_id": "c3", "client_version": "2026.9.1"},
+                {"client_id": "c3", "client_version": "2026.9.1"},
+            ],
+        },
     ]
     fake.configs = {
         T_APPS: {

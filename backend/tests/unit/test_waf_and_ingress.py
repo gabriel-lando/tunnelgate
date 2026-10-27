@@ -144,3 +144,17 @@ def test_tunnel_id_validation() -> None:
     ):
         with pytest.raises(ValidationError):
             validate_tunnel_id(bad)
+
+
+def test_summarize_connectors() -> None:
+    from tunnelgate.service import summarize_connectors
+
+    assert summarize_connectors([]) == (0, [])
+    conns = [
+        *({"client_id": "a", "client_version": "2026.9.1"} for _ in range(4)),
+        *({"client_id": "b", "client_version": "2026.10.0"} for _ in range(4)),
+        {"client_id": "c", "client_version": "2026.9.1"},
+    ]
+    assert summarize_connectors(conns) == (3, ["2026.10.0", "2026.9.1"])
+    assert summarize_connectors([{"client_id": "x"}]) == (1, [])
+    assert summarize_connectors([{"client_id": "x", "client_version": "<b>bad</b>"}]) == (1, [])

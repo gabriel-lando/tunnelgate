@@ -51,7 +51,8 @@ def test_block_all_reports_failed_zone(
 def test_status_lists_routes(fake: FakeCloudflare, capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["status"]) == 0
     out = capsys.readouterr().out
-    assert "apps [healthy, 4 connection(s)]" in out
+    assert "apps [healthy, 2 replica(s), v2026.10.0, v2026.9.1]" in out
+    assert "media [down, 0 replica(s), no version]" in out
     assert "open     git.example.com -> http://gitea:3000" in out
 
 

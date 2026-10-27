@@ -140,6 +140,7 @@ pnpm install
 pnpm dev                      # proxies /api and /auth to http://127.0.0.1:8000
 pnpm check && pnpm lint && pnpm test && pnpm build
 pnpm exec playwright install chromium && pnpm test:e2e
+pnpm build && pnpm screenshots   # regenerates docs/ui/*.png from demo data (frontend/screenshots/)
 ```
 
 To run the backend locally over plain HTTP, set `TUNNELGATE_ALLOW_INSECURE_HTTP=true` and a fixed

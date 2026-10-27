@@ -45,6 +45,16 @@ export function summarize(state: State | null): { tunnels: number; routes: numbe
 	return { tunnels: tunnels.length, routes: routes.length, blocked: routes.filter((r) => r.blocked).length };
 }
 
+/** e.g. "Healthy · 2 replicas · v2026.9.1 · v2026.8.0" */
+export function tunnelSummary(tunnel: Tunnel): string {
+	const parts = [t(`tunnel.status.${tunnel.status}`)];
+	if (tunnel.replicas > 0) {
+		parts.push(tunnel.replicas === 1 ? t('tunnel.replica') : t('tunnel.replicas', { count: tunnel.replicas }));
+	}
+	parts.push(...tunnel.versions.map((v) => `v${v}`));
+	return parts.join(' · ');
+}
+
 export function notBlockedMessage(hosts: string[]): string {
 	return t('toast.notBlocked', { count: hosts.length, hosts: hosts.join(', ') });
 }

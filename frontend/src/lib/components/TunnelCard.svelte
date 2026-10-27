@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import RouteRow from './RouteRow.svelte';
-	import { dashboard, sortRoutes } from '#lib/dashboard.svelte.ts';
+	import { dashboard, sortRoutes, tunnelSummary } from '#lib/dashboard.svelte.ts';
 	import { t } from '#lib/i18n/index.svelte.ts';
 	import { settings } from '#lib/settings.svelte.ts';
 	import type { Route, Tunnel } from '#lib/types.ts';
@@ -25,6 +25,7 @@
 	const routes = $derived(sortRoutes(tunnel.routes, settings.prefs.order));
 	const up = $derived(tunnel.status === 'healthy' || tunnel.status === 'degraded');
 	const busy = $derived(!!dashboard.pending[`tunnel:${tunnel.id}`]);
+	const details = $derived(tunnelSummary(tunnel));
 </script>
 
 <section class="overflow-hidden rounded-xl border border-line bg-surface">
@@ -32,8 +33,8 @@
 		<span class="size-2 shrink-0 rounded-full {up ? 'bg-ok' : 'bg-down'}"></span>
 		<div class="min-w-0 flex-1">
 			<h2 class="truncate text-[15px] font-semibold">{tunnel.name}</h2>
-			<p class="text-[12.5px] text-muted sm:text-[13px]">
-				{t(`tunnel.status.${tunnel.status}`)} · {t('tunnel.connections', { count: tunnel.connections })}
+			<p class="text-[12.5px] text-muted sm:text-[13px]" title={t('tunnel.connections', { count: tunnel.connections })}>
+				{details}
 			</p>
 		</div>
 		{#if tunnel.can_undo && tunnel.remote_managed}

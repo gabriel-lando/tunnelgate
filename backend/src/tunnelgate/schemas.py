@@ -36,6 +36,8 @@ class Tunnel(BaseModel):
     name: str
     status: TunnelStatus
     connections: int
+    replicas: int = Field(description="Distinct cloudflared instances connected")
+    versions: list[str] = Field(description="Distinct cloudflared versions, newest first")
     remote_managed: bool
     can_undo: bool
     routes: list[Route]
