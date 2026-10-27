@@ -11,7 +11,7 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	const publicPages = new Set(['/denied', '/signed-out']);
+	const publicPages = new Set(['/denied', '/signed-out', '/login']);
 
 	onMount(async () => {
 		settings.init();

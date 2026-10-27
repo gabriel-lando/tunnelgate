@@ -104,6 +104,14 @@ class RemoveRequest(_Strict):
     confirm: str = Field(max_length=253)
 
 
+class LoginRequest(BaseModel):
+    # Passwords keep surrounding whitespace, so no str_strip_whitespace here.
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class OperationResult(BaseModel):
     ok: bool = True
     message: str = ""

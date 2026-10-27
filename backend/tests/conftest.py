@@ -350,6 +350,52 @@ def csrf_headers(client: TestClient) -> dict[str, str]:
     return {"Origin": APP, "X-CSRF-Token": me.json()["csrf_token"]}
 
 
+PASSWORD = " correct horse "
+_OIDC_ENV = ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "ALLOWED_GROUPS")
+
+
+@pytest.fixture(scope="session")
+def password_hash() -> str:
+    from tunnelgate.passwords import hash_password
+
+    return hash_password(PASSWORD)
+
+
+@pytest.fixture
+def password_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, password_hash: str
+) -> Settings:
+    env = {
+        "CF_API_TOKEN": "cf-test-token",
+        "CF_ACCOUNT_ID": ACCOUNT,
+        "APP_URL": APP,
+        "BASIC_AUTH_USERNAME": "admin",
+        "BASIC_AUTH_PASSWORD_HASH": password_hash,
+        "TUNNELGATE_DATA_DIR": str(tmp_path / "data"),
+        "TUNNELGATE_STATIC_DIR": str(write_static(tmp_path)),
+    }
+    for k in _OIDC_ENV:
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    return Settings()
+
+
+@pytest.fixture
+def password_client(password_settings: Settings, fake_cf: FakeCloudflare) -> Iterator[TestClient]:
+    app = create_app(password_settings, cf_transport=httpx.MockTransport(fake_cf.handler))
+    with TestClient(app, base_url=APP, follow_redirects=False) as c:
+        yield c
+
+
+def password_login(
+    client: TestClient, username: str = "admin", password: str = PASSWORD
+) -> httpx.Response:
+    return client.post(
+        "/auth/login", json={"username": username, "password": password}, headers={"Origin": APP}
+    )
+
+
 @pytest.fixture
 def authed(client: TestClient, oidc: FakeOidc) -> dict[str, str]:
     resp = login(client, oidc)

@@ -34,6 +34,10 @@ read-only.
 
 ## 2. OIDC provider
 
+Skip this step to use [password mode](../README.md#password-mode) instead: set `BASIC_AUTH_USERNAME`
+and `BASIC_AUTH_PASSWORD_HASH` (from `tunnelgate hash-password`) and leave the `OIDC_*` variables and
+`ALLOWED_GROUPS` unset.
+
 ### Requirements
 
 - Authorization code flow with **PKCE (S256)** and a confidential client (`client_secret_basic`).
@@ -64,7 +68,8 @@ Group membership is enforced by Tunnelgate (`ALLOWED_GROUPS`), so the provider o
 
 Copy [`../.env.example`](../.env.example) to `tunnelgate.env` next to `compose.yaml` and fill it in
 (`chmod 600`). At minimum: `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
-`OIDC_CLIENT_SECRET`, `APP_URL` and `ALLOWED_GROUPS`. Setting `SERVICE_ALLOWLIST` is strongly
+`OIDC_CLIENT_SECRET`, `APP_URL` and `ALLOWED_GROUPS` (or, in password mode, `BASIC_AUTH_USERNAME` and
+`BASIC_AUTH_PASSWORD_HASH` instead of the OIDC variables). Setting `SERVICE_ALLOWLIST` is strongly
 recommended, so cloned routes can only point at services you expect. Leave `SESSION_SECRET` unset.
 
 ## 4. Container

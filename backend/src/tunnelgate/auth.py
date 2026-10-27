@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import hmac
 import logging
+import math
 import secrets
 import time
 from dataclasses import dataclass
@@ -17,6 +20,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from joserfc.errors import JoseError
 
 from tunnelgate.config import Settings
+from tunnelgate.passwords import verify_password, verify_plain
+from tunnelgate.schemas import LoginRequest
 from tunnelgate.security import require_same_origin
 from tunnelgate.store import Store
 
@@ -104,12 +109,133 @@ def _error_page(title: str, message: str, status: int) -> HTMLResponse:
     return HTMLResponse(body, status_code=status)
 
 
+async def _start_session(
+    request: Request,
+    store: Store,
+    settings: Settings,
+    *,
+    username: str,
+    name: str,
+    groups: list[str],
+) -> None:
+    request.session.clear()
+    sid = secrets.token_urlsafe(32)
+    expires = time.time() + settings.session_max_age
+    await store.create_session(sid, username, expires)
+    request.session["user"] = {
+        "username": username,
+        "name": name,
+        "groups": groups,
+        "csrf": secrets.token_urlsafe(32),
+        "exp": expires,
+        "sid": sid,
+    }
+    await store.audit(username, "login", "tunnelgate", "ok")
+
+
+async def _end_session(request: Request, store: Store) -> None:
+    user = await current_user(request)
+    if user is not None:
+        await store.delete_session(user.sid)
+        await store.audit(user.username, "logout", "tunnelgate", "ok")
+    request.session.clear()
+
+
 def build_router(settings: Settings, store: Store) -> APIRouter:
+    if settings.auth_mode == "password":
+        return _password_router(settings, store)
+    return _oidc_router(settings, store)
+
+
+class LoginThrottle:
+    """Global backoff after repeated failures (one account, and no trustworthy client IP)."""
+
+    free_failures = 5
+    max_delay = 300.0
+
+    def __init__(self) -> None:
+        self.failures = 0
+        self.not_before = 0.0
+
+    def retry_after(self, now: float) -> int:
+        return max(0, math.ceil(self.not_before - now))
+
+    def failed(self, now: float) -> None:
+        self.failures += 1
+        if self.failures >= self.free_failures:
+            delay = min(2.0 ** (self.failures - self.free_failures), self.max_delay)
+            self.not_before = now + delay
+
+    def succeeded(self) -> None:
+        self.failures = 0
+        self.not_before = 0.0
+
+
+def check_credentials(settings: Settings, username: str, password: str) -> bool:
+    """Constant-effort check: the password is verified even when the username is wrong."""
+    expected_user = settings.basic_auth_username or ""
+    user_ok = hmac.compare_digest(
+        hashlib.sha256(username.encode()).digest(), hashlib.sha256(expected_user.encode()).digest()
+    )
+    kind, secret = settings.password_check
+    password_ok = (
+        verify_password(password, secret) if kind == "hash" else verify_plain(password, secret)
+    )
+    return user_ok and password_ok
+
+
+def _password_router(settings: Settings, store: Store) -> APIRouter:
+    router = APIRouter(prefix="/auth", include_in_schema=False)
+    throttle = LoginThrottle()
+    # One check at a time: bounds scrypt memory/CPU and makes the throttle race-free.
+    lock = asyncio.Lock()
+
+    @router.get("/login")
+    async def login_page(request: Request) -> Response:
+        target = "/" if await current_user(request) is not None else "/login"
+        return RedirectResponse(target, status_code=303)
+
+    @router.post("/login", dependencies=[Depends(require_same_origin)])
+    async def login(request: Request, body: LoginRequest) -> Response:
+        async with lock:
+            wait = throttle.retry_after(time.monotonic())
+            if wait:
+                await store.audit(body.username, "login", "tunnelgate", "throttled")
+                return JSONResponse(
+                    {"detail": "too many attempts", "retry_after": wait},
+                    status_code=429,
+                    headers={"Retry-After": str(wait)},
+                )
+            ok = await asyncio.to_thread(check_credentials, settings, body.username, body.password)
+            if ok:
+                throttle.succeeded()
+            else:
+                throttle.failed(time.monotonic())
+        if not ok:
+            await store.audit(body.username, "login", "tunnelgate", "denied", reason="credentials")
+            return JSONResponse({"detail": "invalid credentials"}, status_code=401)
+        await _start_session(
+            request, store, settings, username=body.username, name=body.username, groups=[]
+        )
+        return Response(status_code=204)
+
+    @router.post("/logout", dependencies=[Depends(require_same_origin)])
+    async def logout(request: Request) -> Response:
+        then = request.query_params.get("then")
+        await _end_session(request, store)
+        return RedirectResponse("/login" if then == "login" else "/signed-out", status_code=303)
+
+    return router
+
+
+def _oidc_router(settings: Settings, store: Store) -> APIRouter:
     oauth = OAuth()
     oauth.register(
         "oidc",
         client_id=settings.oidc_client_id,
-        client_secret=settings.oidc_client_secret.get_secret_value(),
+        client_secret=settings.oidc_client_secret.get_secret_value()
+        if settings.oidc_client_secret
+        else None,
         server_metadata_url=f"{settings.issuer}/.well-known/openid-configuration",
         client_kwargs={"scope": "openid profile email groups", "code_challenge_method": "S256"},
     )
@@ -179,37 +305,22 @@ def build_router(settings: Settings, store: Store) -> APIRouter:
         groups = [str(g)[:128] for g in raw_groups][:200] if isinstance(raw_groups, list) else []
         reason = authorize(settings, groups, claims.get("amr", userinfo.get("amr")))
 
-        request.session.clear()
         if reason is not None:
+            request.session.clear()
             request.session["denied"] = {"username": username, "reason": reason}
             await store.audit(
                 username, "login", "tunnelgate", "denied", reason=reason, groups=groups
             )
             return RedirectResponse("/denied", status_code=303)
 
-        sid = secrets.token_urlsafe(32)
-        expires = time.time() + settings.session_max_age
-        await store.create_session(sid, username, expires)
-        request.session["user"] = {
-            "username": username,
-            "name": name,
-            "groups": groups,
-            "csrf": secrets.token_urlsafe(32),
-            "exp": expires,
-            "sid": sid,
-        }
-        await store.audit(username, "login", "tunnelgate", "ok")
+        await _start_session(request, store, settings, username=username, name=name, groups=groups)
         return RedirectResponse("/", status_code=303)
 
     @router.post("/logout")
     async def logout(request: Request) -> Response:
         require_same_origin(request)
         then = "login" if request.query_params.get("then") == "login" else "signed-out"
-        user = await current_user(request)
-        if user is not None:
-            await store.delete_session(user.sid)
-            await store.audit(user.username, "logout", "tunnelgate", "ok")
-        request.session.clear()
+        await _end_session(request, store)
         back = f"{settings.app_origin}/" if then == "login" else f"{settings.app_origin}/signed-out"
         try:
             metadata = await client.load_server_metadata()
@@ -256,4 +367,5 @@ async def me_response(request: Request) -> Response:
             },
             status_code=403,
         )
-    return JSONResponse({"error": "unauthenticated"}, status_code=401)
+    mode = request.app.state.settings.auth_mode
+    return JSONResponse({"error": "unauthenticated", "auth": mode}, status_code=401)

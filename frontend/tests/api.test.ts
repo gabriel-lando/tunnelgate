@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, fetchMe } from '../src/lib/api.ts';
+import { api, ApiError, fetchMe, login } from '../src/lib/api.ts';
 
 const json = (status: number, body: unknown) =>
 	new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -16,7 +16,9 @@ describe('api client', () => {
 
 	it('reports anonymous, denied and signed-in sessions', async () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(401, {})));
-		expect(await fetchMe()).toEqual({ kind: 'anonymous' });
+		expect(await fetchMe()).toEqual({ kind: 'anonymous', auth: 'oidc' });
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(401, { error: 'unauthenticated', auth: 'password' })));
+		expect(await fetchMe()).toEqual({ kind: 'anonymous', auth: 'password' });
 		vi.stubGlobal(
 			'fetch',
 			vi.fn().mockResolvedValueOnce(json(403, { error: 'forbidden', reason: 'group', username: 'x' }))
@@ -29,6 +31,29 @@ describe('api client', () => {
 				.mockResolvedValueOnce(json(200, { username: 'g', name: 'G', groups: [], csrf_token: 'tok', expires_at: 1 }))
 		);
 		expect((await fetchMe()).kind).toBe('ok');
+	});
+
+	it('logs in with a password and maps failures', async () => {
+		const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 }));
+		vi.stubGlobal('fetch', fetchMock);
+		expect(await login('admin', ' pw ')).toEqual({ ok: true });
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/auth/login');
+		expect(init.method).toBe('POST');
+		expect(init.credentials).toBe('same-origin');
+		expect(JSON.parse(init.body as string)).toEqual({ username: 'admin', password: ' pw ' });
+
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(401, { detail: 'invalid credentials' })));
+		expect(await login('admin', 'x')).toEqual({ ok: false, reason: 'invalid' });
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'retry-after': '8' } }))
+		);
+		expect(await login('admin', 'x')).toEqual({ ok: false, reason: 'throttled', retryAfter: 8 });
+		vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new TypeError('offline')));
+		expect(await login('admin', 'x')).toEqual({ ok: false, reason: 'error' });
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(500, {})));
+		expect(await login('admin', 'x')).toEqual({ ok: false, reason: 'error' });
 	});
 
 	it('sends the CSRF token on mutations', async () => {

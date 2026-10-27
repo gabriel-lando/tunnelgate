@@ -104,13 +104,14 @@ def validate_tunnel_id(tunnel_id: str) -> str:
 
 
 def apply_origin_overrides(
-    base: dict[str, Any], overrides: dict[str, Any], forbidden_hosts: frozenset[str] = frozenset()
+    base: dict[str, Any], overrides: dict[str, Any], policy: ServicePolicy | None = None
 ) -> dict[str, Any]:
     """Merge user edits into a copied originRequest.
 
     Only known, typed keys can be set or cleared; anything else inherited from the source
     rule (Access enforcement, IP rules, proxy settings) is kept untouched.
     """
+    policy = policy or ServicePolicy()
     result = copy.deepcopy(base)
     for key, value in overrides.items():
         if key not in _EDITABLE_KEYS:
@@ -127,10 +128,11 @@ def apply_origin_overrides(
             host = validate_optional_hostname(value)
             if host is None:
                 result.pop(key, None)
-            elif host in forbidden_hosts:
-                raise ValidationError(f"{key} cannot point at {host}")
-            else:
-                result[key] = host
+                continue
+            try:
+                result[key] = policy.check_host(host)
+            except ValidationError:
+                raise ValidationError(f"{key} cannot point at {host}") from None
         else:
             if (
                 isinstance(value, bool)
@@ -471,7 +473,7 @@ class TunnelService:
             if path:
                 rule["path"] = path
             origin = apply_origin_overrides(
-                source.get("originRequest") or {}, req.origin_request, self.policy.forbidden_hosts
+                source.get("originRequest") or {}, req.origin_request, self.policy
             )
             if origin:
                 rule["originRequest"] = origin

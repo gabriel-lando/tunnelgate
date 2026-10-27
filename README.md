@@ -15,7 +15,8 @@ A small, internal-only dashboard that works as a **kill switch** and route manag
 - Blocks or allows external access per route, per tunnel, or for everything at once.
 - Clones an existing route (same tunnel) to create a new public hostname, and removes routes.
 - Undoes the last config change of a tunnel from a local snapshot.
-- Signs users in with OIDC (e.g. Authelia), requires an allowed group and MFA.
+- Signs users in with OIDC (e.g. Authelia), requires an allowed group and MFA; or, without an identity
+  provider, with a single username and password.
 - Responsive UI (desktop and mobile), installable as a PWA, English and Portuguese (Brazil).
 
 Nothing about your tunnels is hardcoded or stored locally: Cloudflare is the source of truth.
@@ -67,25 +68,29 @@ Limitations:
   Scope the zone policy to the zones you want to manage. Widening the scope later only needs a new token and a
   restart; new zones appear automatically.
 
-- An OIDC provider with PKCE and a `groups` claim (Authelia example in [`deploy/`](deploy/README.md#2-oidc-provider)).
+- An OIDC provider with PKCE and a `groups` claim (Authelia example in [`deploy/`](deploy/README.md#2-oidc-provider)),
+  or a username and password for [password mode](#password-mode).
 
 ## Configuration
 
 All configuration comes from environment variables (see [`.env.example`](.env.example)).
 
-| Variable                                | Required         | Description                                                                                                                                            |
-| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CF_API_TOKEN`                          | yes              | Cloudflare API token (permissions above).                                                                                                              |
-| `CF_ACCOUNT_ID`                         | yes              | Account that owns the tunnels.                                                                                                                         |
-| `OIDC_ISSUER`                           | yes              | OIDC issuer URL, e.g. `https://auth.example.com`. Its hostname is always treated as a critical route.                                                  |
-| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | yes              | OIDC client credentials.                                                                                                                               |
-| `APP_URL`                               | yes              | Public URL of Tunnelgate (no path). Used for the redirect URI (`/auth/callback`), Origin checks and cookies.                                           |
-| `ALLOWED_GROUPS`                        | yes              | Comma-separated groups allowed in (case-insensitive).                                                                                                  |
-| `OIDC_REQUIRE_MFA`                      | no               | Default `true`. Requires the `amr` claim to show multi-factor sign-in.                                                                                 |
-| `CRITICAL_HOSTS`                        | no               | Extra hostnames that need confirmation before blocking.                                                                                                |
-| `SERVICE_ALLOWLIST`                     | no (recommended) | Glob patterns (`host` or `host:port`) that cloned routes may point to. Loopback, link-local/metadata, this app and the issuer are always refused.      |
-| `SESSION_MAX_AGE`                       | no               | Session lifetime in seconds (default 8 hours, absolute).                                                                                               |
-| `SESSION_SECRET`                        | no               | Development only (min. 32 characters). When unset, a random key is generated at every start (a restart signs everyone out). Setting it logs a warning. |
+| Variable                                | Required         | Description                                                                                                                                             |
+| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CF_API_TOKEN`                          | yes              | Cloudflare API token (permissions above).                                                                                                               |
+| `CF_ACCOUNT_ID`                         | yes              | Account that owns the tunnels.                                                                                                                          |
+| `OIDC_ISSUER`                           | OIDC mode        | OIDC issuer URL, e.g. `https://auth.example.com`. Its hostname is always treated as a critical route.                                                   |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | OIDC mode        | OIDC client credentials.                                                                                                                                |
+| `APP_URL`                               | yes              | Public URL of Tunnelgate (no path). Used for the redirect URI (`/auth/callback`), Origin checks and cookies.                                            |
+| `ALLOWED_GROUPS`                        | OIDC mode        | Comma-separated groups allowed in (case-insensitive).                                                                                                   |
+| `OIDC_REQUIRE_MFA`                      | no               | Default `true`. Requires the `amr` claim to show multi-factor sign-in.                                                                                  |
+| `BASIC_AUTH_USERNAME`                   | password mode    | Username for [password mode](#password-mode).                                                                                                           |
+| `BASIC_AUTH_PASSWORD_HASH`              | password mode    | Hash from `tunnelgate hash-password` (preferred).                                                                                                       |
+| `BASIC_AUTH_PASSWORD`                   | password mode    | Plain-text password, instead of the hash.                                                                                                               |
+| `CRITICAL_HOSTS`                        | no               | Extra hostnames that need confirmation before blocking.                                                                                                 |
+| `SERVICE_ALLOWLIST`                     | no (recommended) | Patterns (`host` or `host:port`) that cloned routes may point to; see below. Loopback, link-local/metadata, this app and the issuer are always refused. |
+| `SESSION_MAX_AGE`                       | no               | Session lifetime in seconds (default 8 hours, absolute).                                                                                                |
+| `SESSION_SECRET`                        | no               | Development only (min. 32 characters). When unset, a random key is generated at every start (a restart signs everyone out). Setting it logs a warning.  |
 
 Sessions are also registered server-side, so signing out invalidates the cookie immediately, and the
 identity provider is asked to re-authenticate users whose last sign-in is older than `SESSION_MAX_AGE`.
@@ -94,6 +99,32 @@ Cloned routes are created **blocked** by default.
 Users who authenticate but are not authorized (missing group or MFA) get an _Access denied_ page with
 sign-out options instead of a login loop. The API answers `401` for "not signed in" and `403` for
 "signed in but not allowed".
+
+`SERVICE_ALLOWLIST` patterns: `*` and `?` match within one DNS label and never cross a dot or a colon,
+a leading `*.` matches any number of subdomains (`*.lan` matches `nas.lan` and `a.b.lan`), and a pattern
+without a port allows any port. Patterns made only of digits, dots and wildcards (`10.0.10.*`) match
+IPv4 addresses only, never names such as `10.0.10.5.example.com`. A single `*` allows everything. When
+the list is empty, a warning is logged at startup.
+
+### Password mode
+
+Without an identity provider, set `BASIC_AUTH_USERNAME` and a password instead of the `OIDC_*` variables
+and `ALLOWED_GROUPS`. Users then get a sign-in form at `/login`.
+
+```sh
+docker run --rm -it docker.io/gabriellando/tunnelgate hash-password   # prompts, prints scrypt:...
+docker run --rm docker.io/gabriellando/tunnelgate hash-password 'my password'   # non-interactive
+```
+
+Passing the password as an argument leaves it in your shell history; the prompt avoids that.
+
+Put the output in `BASIC_AUTH_PASSWORD_HASH` (it contains no `$`, so it is safe in Compose env files), or
+set the password itself in `BASIC_AUTH_PASSWORD`. If both are set, the hash is used and an error is logged.
+If OIDC and password variables are both set, OIDC is used and an error is logged.
+
+Password mode has no MFA. After 5 failed attempts, each further attempt waits exponentially longer (up to
+5 minutes); every attempt is in the audit log. Keep the app on your internal network, and consider the
+reverse proxy's forward auth as an extra layer.
 
 ## Deployment
 

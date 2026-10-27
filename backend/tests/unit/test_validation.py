@@ -128,13 +128,42 @@ def test_service_policy() -> None:
         "http://0.0.0.0:80",
         "https://TG.example.com",
         "http://[fe80::1]",
+        # Regression (security review): loopback aliases, metadata endpoints, numeric forms.
+        "http://foo.localhost",
+        "http://a.b.LOCALHOST.",
+        "http://[::ffff:127.0.0.1]",
+        "http://[fd00:ec2::254]",
+        "http://100.100.100.200",
+        "http://168.63.129.16",
+        "http://metadata.google.internal",
+        "http://127.1",
+        "http://0x7f000001",
+        "http://2130706433",
+        "http://017700000001",
+        "http://0",
     ):
         with pytest.raises(ValidationError):
             policy.check(bad)
-    allow = ServicePolicy(allowlist=("*.lan:*", "gitea:3000", "10.0.10.*"))
+    for fine in ("http://db1:5432", "http://cafe.lan", "http://deadbeef", "http://10.0.0.5"):
+        assert policy.check(fine)
+    allow = ServicePolicy(allowlist=("*.lan:*", "gitea:3000", "10.0.10.*", "*:9000"))
     assert allow.check("http://nas.lan:5000")
+    assert allow.check("http://a.b.lan:1")
     assert allow.check("http://gitea:3000")
     assert allow.check("http://10.0.10.4:80")
-    for bad in ("http://gitea:3001", "http://proxmox:8006", "http://10.0.20.4"):
+    assert allow.check("http://anything:9000")
+    for bad in (
+        "http://gitea:3001",
+        "http://gitea",
+        "http://proxmox:8006",
+        "http://10.0.20.4",
+        "http://lan:1",
+        # Regression (security review): wildcards must not cross dots or match names.
+        "http://10.0.10.5.evil.com",
+        "http://10.0.10.com",
+        "http://10.0.10.1234",
+        "http://a.b:9000",
+    ):
         with pytest.raises(ValidationError):
             allow.check(bad)
+    assert ServicePolicy(allowlist=("*",)).check("http://a.b.c:1")

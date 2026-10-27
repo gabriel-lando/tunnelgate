@@ -62,3 +62,75 @@ def test_insecure_http_only_with_explicit_flag(base_env: pytest.MonkeyPatch) -> 
     base_env.setenv("APP_URL", "http://localhost:5173")
     base_env.setenv("TUNNELGATE_ALLOW_INSECURE_HTTP", "true")
     assert not Settings().secure_cookies
+
+
+@pytest.fixture
+def password_env(base_env: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    for k in ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "ALLOWED_GROUPS"):
+        base_env.delenv(k)
+    base_env.setenv("BASIC_AUTH_USERNAME", "admin")
+    base_env.setenv("BASIC_AUTH_PASSWORD", "pw")
+    return base_env
+
+
+def test_oidc_mode(base_env: pytest.MonkeyPatch) -> None:
+    assert Settings().auth_mode == "oidc"
+
+
+def test_password_mode(password_env: pytest.MonkeyPatch) -> None:
+    s = Settings()
+    assert s.auth_mode == "password"
+    assert s.issuer == s.issuer_origin == s.issuer_host == ""
+    assert s.critical_hostnames == {"a.example.com"}
+    assert s.password_check == ("plain", "pw")
+
+
+def test_both_modes_prefer_oidc(
+    base_env: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    base_env.setenv("BASIC_AUTH_USERNAME", "admin")
+    base_env.setenv("BASIC_AUTH_PASSWORD", "pw")
+    assert Settings().auth_mode == "oidc"
+    assert "using OIDC" in caplog.text
+
+
+def test_hash_wins_over_plain(
+    password_env: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from tunnelgate.passwords import hash_password
+
+    encoded = hash_password("pw2")
+    password_env.setenv("BASIC_AUTH_PASSWORD_HASH", encoded)
+    assert Settings().password_check == ("hash", encoded)
+    assert "using the hash" in caplog.text
+
+
+def test_plain_password_logs_nothing(
+    password_env: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    Settings()
+    assert caplog.text == ""
+
+
+@pytest.mark.parametrize(
+    ("unset", "extra"),
+    [
+        (("BASIC_AUTH_USERNAME", "BASIC_AUTH_PASSWORD"), {}),
+        (("BASIC_AUTH_PASSWORD",), {}),
+        (("BASIC_AUTH_USERNAME",), {}),
+        ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt$1$2"}),
+        ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt:1048576:8:1:AAAA:AAAA"}),
+        ((), {"BASIC_AUTH_USERNAME": "bad<user>"}),
+        ((), {"BASIC_AUTH_PASSWORD": ""}),
+        ((), {"OIDC_ISSUER": "https://auth.example.com"}),
+    ],
+)
+def test_incomplete_auth_config_is_rejected(
+    password_env: pytest.MonkeyPatch, unset: tuple[str, ...], extra: dict[str, str]
+) -> None:
+    for k in unset:
+        password_env.delenv(k)
+    for k, v in extra.items():
+        password_env.setenv(k, v)
+    with pytest.raises(ValidationError):
+        Settings()

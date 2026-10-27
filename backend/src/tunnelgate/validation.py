@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import fnmatch
 import ipaddress
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 _LABEL = r"(?!-)[a-z0-9-]{1,63}(?<!-)"
@@ -101,6 +100,44 @@ def normalize_route_hostname(value: str) -> str:
 
 
 _LOOPBACK_NAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"})
+_METADATA_NAMES = frozenset({"metadata", "metadata.google.internal"})
+_METADATA_IPS = frozenset(
+    ipaddress.ip_address(a) for a in ("fd00:ec2::254", "100.100.100.200", "168.63.129.16")
+)
+# Hosts some resolvers read as IPv4 in non-canonical form (127.1, 0x7f000001, 2130706433).
+_NUMERIC_LABEL = r"(?:0x[0-9a-f]*|[0-9]+)"
+_NUMERIC_HOST_RE = re.compile(rf"^{_NUMERIC_LABEL}(?:\.{_NUMERIC_LABEL})*$")
+_IP_PATTERN_RE = re.compile(r"^(?=.*[0-9])[0-9.*?]+$")
+
+
+def _compile_allow(pattern: str) -> re.Pattern[str]:
+    """Compile a SERVICE_ALLOWLIST entry; wildcards never cross a dot or a colon.
+
+    A leading "*." matches one or more labels. Patterns made only of digits, dots and
+    wildcards are IPv4 patterns and match IPv4 literals only.
+    """
+    if pattern == "*":
+        return re.compile(r"^.*$")
+    host, _, port = pattern.partition(":")
+    ip_like = bool(_IP_PATTERN_RE.fullmatch(host))
+    star, one = (r"[0-9]{1,3}", r"[0-9]") if ip_like else (r"[a-z0-9-]*", r"[a-z0-9-]")
+    regex = ""
+    if host.startswith("*.") and not ip_like:
+        regex, host = r"(?:[a-z0-9-]+\.)+", host[2:]
+    for ch in host:
+        regex += star if ch == "*" else one if ch == "?" else re.escape(ch)
+    if port:
+        regex += ":" + "".join(r"[0-9]+" if c == "*" else re.escape(c) for c in port)
+    else:
+        regex += r"(?::[0-9]+)?"
+    return re.compile(f"^{regex}$")
+
+
+def _is_ipv4(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).version == 4
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -114,25 +151,53 @@ class ServicePolicy:
 
     forbidden_hosts: frozenset[str] = frozenset()
     allowlist: tuple[str, ...] = ()
+    _compiled: tuple[tuple[re.Pattern[str], bool], ...] = field(
+        init=False, repr=False, compare=False
+    )
 
-    def check(self, service: str) -> str:
-        parts = urlsplit(service)
-        host = (parts.hostname or "").lower().rstrip(".")
-        if host in _LOOPBACK_NAMES or host in self.forbidden_hosts:
+    def __post_init__(self) -> None:
+        compiled = tuple(
+            (_compile_allow(p), bool(_IP_PATTERN_RE.fullmatch(p.partition(":")[0])))
+            for p in self.allowlist
+        )
+        object.__setattr__(self, "_compiled", compiled)
+
+    def check_host(self, host: str) -> str:
+        """Refuse loopback, link-local, metadata, ambiguous numeric hosts and our own hosts."""
+        host = host.lower().rstrip(".")
+        if (
+            host in _LOOPBACK_NAMES
+            or host.endswith(".localhost")
+            or host in _METADATA_NAMES
+            or host in self.forbidden_hosts
+        ):
             raise ValidationError(f"service host {host!r} is not allowed")
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
-            ip = None
-        if ip is not None and (
-            ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast
+            if _NUMERIC_HOST_RE.fullmatch(host):
+                raise ValidationError(f"service host {host!r} is ambiguous") from None
+            return host
+        mapped = getattr(ip, "ipv4_mapped", None) or ip
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_unspecified
+            or ip.is_multicast
+            or ip in _METADATA_IPS
+            or mapped in _METADATA_IPS
         ):
             raise ValidationError(f"service address {host} is not allowed")
-        if self.allowlist:
+        return host
+
+    def check(self, service: str) -> str:
+        parts = urlsplit(service)
+        host = self.check_host(parts.hostname or "")
+        if self._compiled:
             target = f"{host}:{parts.port}" if parts.port else host
             if not any(
-                fnmatch.fnmatchcase(target, p) or fnmatch.fnmatchcase(host, p)
-                for p in self.allowlist
+                rx.fullmatch(target) and (not ip_pattern or _is_ipv4(host))
+                for rx, ip_pattern in self._compiled
             ):
                 raise ValidationError(f"service host {target} is not in SERVICE_ALLOWLIST")
         return service

@@ -1,4 +1,4 @@
-import type { About, CloneRequest, Denied, Me, OperationResult, State } from './types';
+import type { About, AuthMode, CloneRequest, Denied, Me, OperationResult, State } from './types';
 
 export class ApiError extends Error {
 	constructor(
@@ -11,7 +11,11 @@ export class ApiError extends Error {
 	}
 }
 
-export type MeResult = { kind: 'ok'; me: Me } | { kind: 'denied'; denied: Denied } | { kind: 'anonymous' };
+export type MeResult =
+	{ kind: 'ok'; me: Me } | { kind: 'denied'; denied: Denied } | { kind: 'anonymous'; auth: AuthMode };
+
+export type LoginResult =
+	{ ok: true } | { ok: false; reason: 'invalid' | 'error' } | { ok: false; reason: 'throttled'; retryAfter: number };
 
 let csrfToken = '';
 
@@ -71,12 +75,38 @@ export async function fetchMe(): Promise<MeResult> {
 	} catch {
 		throw new ApiError(0, 'network');
 	}
-	if (resp.status === 401) return { kind: 'anonymous' };
+	if (resp.status === 401) {
+		const body = (await resp.json().catch(() => null)) as { auth?: unknown } | null;
+		return { kind: 'anonymous', auth: body?.auth === 'password' ? 'password' : 'oidc' };
+	}
 	if (resp.status === 403) return { kind: 'denied', denied: (await resp.json()) as Denied };
 	if (!resp.ok) throw new ApiError(resp.status, resp.statusText);
 	const me = (await resp.json()) as Me;
 	setCsrfToken(me.csrf_token);
 	return { kind: 'ok', me };
+}
+
+export async function login(username: string, password: string): Promise<LoginResult> {
+	let resp: Response;
+	try {
+		resp = await fetch('/auth/login', {
+			method: 'POST',
+			headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+			credentials: 'same-origin',
+			cache: 'no-store',
+			redirect: 'error',
+			body: JSON.stringify({ username, password })
+		});
+	} catch {
+		return { ok: false, reason: 'error' };
+	}
+	if (resp.ok) return { ok: true };
+	if (resp.status === 401) return { ok: false, reason: 'invalid' };
+	if (resp.status === 429) {
+		const seconds = Number(resp.headers.get('retry-after'));
+		return { ok: false, reason: 'throttled', retryAfter: Number.isFinite(seconds) && seconds > 0 ? seconds : 1 };
+	}
+	return { ok: false, reason: 'error' };
 }
 
 export const api = {

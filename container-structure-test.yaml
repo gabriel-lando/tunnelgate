@@ -18,10 +18,14 @@ commandTests:
   - name: cli is installed
     command: tunnelgate
     args: ["--help"]
-    expectedOutput: ["block-all", "unblock-all"]
+    expectedOutput: ["block-all", "unblock-all", "hash-password"]
   - name: no dev tooling in runtime
     command: sh
-    args: ["-c", "! command -v uv && ! python -c 'import pytest' 2>/dev/null"]
+    args: ["-c", "! command -v uv && ! python -c 'import pytest' 2>/dev/null && ! python -m pip --version 2>/dev/null"]
+  - name: password hashing command
+    command: sh
+    args: ["-c", "echo secret | tunnelgate hash-password"]
+    expectedOutput: ["^scrypt:32768:8:1:"]
     exitCode: 0
 
 fileExistenceTests:

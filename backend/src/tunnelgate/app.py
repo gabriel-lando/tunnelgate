@@ -81,6 +81,10 @@ def create_app(
         forbidden_hosts=frozenset({settings.app_host, settings.issuer_host} - {""}),
         allowlist=tuple(settings.service_allowlist),
     )
+    if not settings.service_allowlist:
+        log.warning(
+            "SERVICE_ALLOWLIST is empty: cloned routes may point at any host cloudflared can reach"
+        )
     service = TunnelService(
         cf, store, settings.critical_hostnames, LockManager(settings.data_dir), policy
     )
@@ -170,7 +174,7 @@ def create_app(
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
     app.add_middleware(
         SecurityMiddleware,
-        csp=build_csp(inline_script_hashes(static_dir), [settings.issuer_origin]),
+        csp=build_csp(inline_script_hashes(static_dir), [o for o in [settings.issuer_origin] if o]),
         hsts=settings.secure_cookies,
     )
     return app

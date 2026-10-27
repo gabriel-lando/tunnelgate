@@ -168,7 +168,10 @@
 						<div class="min-w-0">
 							<div class="font-medium">{session.me.name}</div>
 							<div class="text-[13px] text-muted">
-								{session.me.username} · {session.me.groups.join(', ')}<br />{t('settings.expires', { time: expires })}
+								{session.me.username}{session.me.groups.length ? ` · ${session.me.groups.join(', ')}` : ''}<br />{t(
+									'settings.expires',
+									{ time: expires }
+								)}
 							</div>
 						</div>
 					</div>

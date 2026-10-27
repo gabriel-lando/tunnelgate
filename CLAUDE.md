@@ -10,7 +10,6 @@ single container).
 - Keep code comments short; no long explanatory comment blocks.
 - Never hardcode hostnames, groups or tunnel names; everything comes from env or the Cloudflare API.
 - Every value sent to Cloudflare is validated (`backend/src/tunnelgate/validation.py`); keep it that way.
-- Security-relevant changes need a regression test and an entry in `docs/security-review.md`.
 - Dependency rules: versions ≥ 3 days old (uv `exclude-newer`, pnpm `minimumReleaseAge`); lockfiles enforced;
   GitHub Actions pinned by commit SHA; Python scanners via hash-locked `ci/scanners.txt`.
 - After API schema changes: `cd backend && uv run python scripts/export_openapi.py`, then update
