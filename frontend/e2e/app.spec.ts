@@ -30,6 +30,8 @@ const STATE = {
 			name: 'nikita-apps',
 			status: 'healthy',
 			connections: 4,
+			replicas: 1,
+			versions: ['2026.9.1'],
 			remote_managed: true,
 			can_undo: true,
 			routes: [
@@ -47,7 +49,9 @@ const STATE = {
 			id: '33333333-3333-4333-8333-333333333333',
 			name: 'auth',
 			status: 'healthy',
-			connections: 2,
+			connections: 8,
+			replicas: 2,
+			versions: ['2026.10.0', '2026.9.1'],
 			remote_managed: true,
 			can_undo: false,
 			routes: [route('auth.example.com', { critical: true, service: 'https://swag-ext:443' })]

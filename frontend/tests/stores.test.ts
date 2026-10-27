@@ -10,6 +10,8 @@ const state = {
 			name: 'apps',
 			status: 'healthy',
 			connections: 1,
+			replicas: 1,
+			versions: ['2026.9.1'],
 			remote_managed: true,
 			can_undo: true,
 			routes: [

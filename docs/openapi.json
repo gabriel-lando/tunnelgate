@@ -498,6 +498,11 @@
             "title": "Remote Managed",
             "type": "boolean"
           },
+          "replicas": {
+            "description": "Distinct cloudflared instances connected",
+            "title": "Replicas",
+            "type": "integer"
+          },
           "routes": {
             "items": {
               "$ref": "#/components/schemas/Route"
@@ -515,6 +520,14 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "versions": {
+            "description": "Distinct cloudflared versions, newest first",
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
           }
         },
         "required": [
@@ -522,6 +535,8 @@
           "name",
           "status",
           "connections",
+          "replicas",
+          "versions",
           "remote_managed",
           "can_undo",
           "routes"

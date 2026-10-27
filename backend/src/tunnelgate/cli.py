@@ -81,7 +81,8 @@ async def _break_glass(command: str) -> int:
         else:
             state = await svc.state(force=True)
             for tunnel in state.tunnels:
-                print(f"{tunnel.name} [{tunnel.status}, {tunnel.connections} connection(s)]")
+                versions = ", ".join(f"v{v}" for v in tunnel.versions) or "no version"
+                print(f"{tunnel.name} [{tunnel.status}, {tunnel.replicas} replica(s), {versions}]")
                 for route in tunnel.routes:
                     flag = "BLOCKED" if route.blocked else "open"
                     print(f"  {flag:8} {route.hostname} -> {route.service or '?'}")

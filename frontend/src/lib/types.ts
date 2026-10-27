@@ -21,6 +21,8 @@ export interface Tunnel {
 	name: string;
 	status: TunnelStatus;
 	connections: number;
+	replicas: number;
+	versions: string[];
 	remote_managed: boolean;
 	can_undo: boolean;
 	routes: Route[];

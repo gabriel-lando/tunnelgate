@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { filterTunnels, sortRoutes, splitColumns, summarize } from '../src/lib/dashboard.svelte.ts';
+import { filterTunnels, sortRoutes, splitColumns, summarize, tunnelSummary } from '../src/lib/dashboard.svelte.ts';
+import { i18n } from '../src/lib/i18n/index.svelte.ts';
 import type { Route, State, Tunnel } from '../src/lib/types.ts';
 
 const route = (hostname: string, blocked = false, service = 'http://x:1'): Route => ({
@@ -21,6 +22,8 @@ const tunnel = (name: string, routes: Route[]): Tunnel => ({
 	name,
 	status: 'healthy',
 	connections: 1,
+	replicas: 1,
+	versions: ['2026.9.1'],
 	remote_managed: true,
 	can_undo: false,
 	routes
@@ -74,5 +77,19 @@ describe('splitColumns', () => {
 		const items = [sized('a', 3), sized('b', 1)];
 		expect(splitColumns(items, 1)).toEqual([items]);
 		expect(splitColumns([], 2)).toEqual([[], []]);
+	});
+
+	it('summarizes replicas and versions per tunnel', () => {
+		i18n.apply('en-US');
+		const base = tunnel('apps', []);
+		expect(tunnelSummary(base)).toBe('Healthy · 1 replica · v2026.9.1');
+		expect(tunnelSummary({ ...base, replicas: 2, versions: ['2026.10.0', '2026.9.1'] })).toBe(
+			'Healthy · 2 replicas · v2026.10.0 · v2026.9.1'
+		);
+		expect(tunnelSummary({ ...base, replicas: 2, versions: ['2026.10.0'] })).toBe('Healthy · 2 replicas · v2026.10.0');
+		expect(tunnelSummary({ ...base, status: 'down', replicas: 0, versions: [] })).toBe('Down');
+		i18n.apply('pt-BR');
+		expect(tunnelSummary({ ...base, replicas: 3 })).toBe('Saudável · 3 réplicas · v2026.9.1');
+		i18n.apply('en-US');
 	});
 });

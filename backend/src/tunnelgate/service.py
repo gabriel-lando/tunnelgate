@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _TUNNEL_TARGET_RE = re.compile(r"^([0-9a-f-]{36})\.cfargotunnel\.com$")
 _STATUSES: frozenset[str] = frozenset({"healthy", "degraded", "down", "inactive"})
+_VERSION_RE = re.compile(r"^[0-9A-Za-z.+-]{1,32}$")
 CACHE_TTL = 10.0
 MIN_REFRESH_INTERVAL = 3.0
 
@@ -78,6 +79,22 @@ class _Snapshot:
     zones: dict[str, str]
     routes: dict[str, set[str]] = field(default_factory=dict)  # hostname -> tunnel ids
     at: float = 0.0
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in re.findall(r"\d+", version))
+
+
+def summarize_connectors(connections: list[JSON]) -> tuple[int, list[str]]:
+    """Group a tunnel's connections by cloudflared instance; return (replicas, versions)."""
+    clients: dict[str, str] = {}
+    for conn in connections:
+        client = str(conn.get("client_id") or conn.get("id") or "")
+        version = str(conn.get("client_version") or "")
+        if client:
+            clients[client] = version if _VERSION_RE.fullmatch(version) else ""
+    versions = sorted({v for v in clients.values() if v}, key=_version_key, reverse=True)
+    return len(clients), versions
 
 
 def validate_tunnel_id(tunnel_id: str) -> str:
@@ -298,12 +315,16 @@ class TunnelService:
                 )
                 index[host].add(t["id"])
             status = str(t.get("status") or "unknown")
+            connections = [c for c in t.get("connections") or [] if isinstance(c, dict)]
+            replicas, versions = summarize_connectors(connections)
             tunnels.append(
                 Tunnel(
                     id=t["id"],
                     name=str(t.get("name") or t["id"]),
                     status=status if status in _STATUSES else "unknown",
-                    connections=len(t.get("connections") or []),
+                    connections=len(connections),
+                    replicas=replicas,
+                    versions=versions,
                     remote_managed=remote[t["id"]],
                     can_undo=t["id"] in undoable,
                     routes=routes,

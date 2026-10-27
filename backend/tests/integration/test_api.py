@@ -34,7 +34,10 @@ def test_state_groups_routes_by_tunnel(client: TestClient, authed: dict[str, str
     names = [t["name"] for t in state["tunnels"]]
     assert names == ["apps", "auth", "media"]
     apps = next(t for t in state["tunnels"] if t["id"] == T_APPS)
-    assert apps["status"] == "healthy" and apps["connections"] == 4 and apps["remote_managed"]
+    assert apps["status"] == "healthy" and apps["connections"] == 8 and apps["remote_managed"]
+    assert apps["replicas"] == 2 and apps["versions"] == ["2026.10.0", "2026.9.1"]
+    media = next(t for t in state["tunnels"] if t["id"] == T_MEDIA)
+    assert media["replicas"] == 0 and media["versions"] == []
     hosts = [r["hostname"] for r in apps["routes"]]
     assert hosts == [
         "git.example.com",

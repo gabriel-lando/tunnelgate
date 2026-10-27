@@ -23,6 +23,6 @@ describe('i18n', () => {
 		i18n.apply('pt-BR');
 		expect(i18n.t('dashboard.title')).toBe('Túneis');
 		i18n.apply('en-US');
-		expect(i18n.t('tunnel.connections', { count: 4 })).toBe('4 connections');
+		expect(i18n.t('tunnel.replicas', { count: 4 })).toBe('4 replicas');
 	});
 });
