@@ -39,6 +39,8 @@ export interface State {
 	generated_at: number;
 }
 
+export type AuthMode = 'oidc' | 'password';
+
 export interface Me {
 	username: string;
 	name: string;

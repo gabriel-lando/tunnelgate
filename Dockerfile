@@ -1,13 +1,15 @@
 # syntax=docker/dockerfile:1
 # Base images use a fixed minor version; patch updates arrive through the monthly rebuild.
 ARG PYTHON_IMAGE=python:3.15-slim
-ARG NODE_IMAGE=node:24-slim
+ARG NODE_IMAGE=node:26-slim
 
 FROM ${NODE_IMAGE} AS frontend
 ENV CI=true COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN corepack enable && corepack install && pnpm install --frozen-lockfile
+# Node 25+ no longer ships corepack; it still verifies pnpm against the packageManager hash.
+RUN npm install --global --ignore-scripts corepack@0.36.0 \
+ && corepack enable && corepack install && pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
@@ -37,7 +39,9 @@ ENV PATH=/app/.venv/bin:$PATH \
     TUNNELGATE_DATA_DIR=/data \
     TUNNELGATE_VERSION=${VERSION} \
     TUNNELGATE_COMMIT=${COMMIT}
-RUN groupadd --system --gid 10001 tunnelgate \
+# pip is unused at runtime and ships vendored libraries that scanners flag.
+RUN python -m pip uninstall --yes --no-cache-dir pip \
+ && groupadd --system --gid 10001 tunnelgate \
  && useradd --system --uid 10001 --gid tunnelgate --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin tunnelgate \
  && mkdir -p /data \
  && chown tunnelgate:tunnelgate /data \

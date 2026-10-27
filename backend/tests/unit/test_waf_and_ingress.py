@@ -10,7 +10,7 @@ from tunnelgate.service import (
     remove_ingress_rule,
     validate_tunnel_id,
 )
-from tunnelgate.validation import ValidationError
+from tunnelgate.validation import ServicePolicy, ValidationError
 from tunnelgate.waf import blocked_from_ruleset, build_expression, find_rule, parse_expression
 
 
@@ -88,10 +88,15 @@ def test_origin_overrides_cannot_drop_protections() -> None:
     for key in ("access", "ipRules", "proxyType", "caPool"):
         with pytest.raises(ValidationError):
             apply_origin_overrides(base, {key: None})
-    with pytest.raises(ValidationError):
-        apply_origin_overrides(
-            {}, {"httpHostHeader": "app.example.com"}, frozenset({"app.example.com"})
-        )
+    policy = ServicePolicy(forbidden_hosts=frozenset({"app.example.com"}))
+    # Regression (security review): host overrides go through the same host denylist.
+    for host in ("app.example.com", "127.0.0.1", "foo.localhost", "169.254.169.254"):
+        for key in ("httpHostHeader", "originServerName"):
+            with pytest.raises(ValidationError):
+                apply_origin_overrides({}, {key: host}, policy)
+    assert apply_origin_overrides({}, {"httpHostHeader": "ok.example.com"}, policy) == {
+        "httpHostHeader": "ok.example.com"
+    }
 
 
 def test_insert_before_covering_wildcard() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import logging
 import sys
 
@@ -100,6 +101,27 @@ async def _break_glass(command: str) -> int:
         store.close()
 
 
+def _hash_password(given: str | None) -> int:
+    from tunnelgate.passwords import hash_password
+
+    if given is not None:
+        password = given
+    elif sys.stdin.isatty():
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Repeat password: ") != password:
+            print("Passwords do not match.", file=sys.stderr)
+            return 1
+    else:
+        # No TTY (e.g. "docker run -i" without -t): say what we wait for, do not hang silently.
+        print("Reading the password from stdin (one line)...", file=sys.stderr)
+        password = sys.stdin.readline().rstrip("\r\n")
+    if not password:
+        print("Password must not be empty.", file=sys.stderr)
+        return 1
+    print(hash_password(password))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tunnelgate")
     sub = parser.add_subparsers(dest="command")
@@ -109,7 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="list tunnels, routes and block status")
     sub.add_parser("block-all", help="block every route (break-glass)")
     sub.add_parser("unblock-all", help="remove every route from the block list (break-glass)")
+    hashing = sub.add_parser("hash-password", help="hash a password for BASIC_AUTH_PASSWORD_HASH")
+    hashing.add_argument(
+        "password",
+        nargs="?",
+        help="password to hash (visible in shell history and process lists; omit to be prompted)",
+    )
     args = parser.parse_args(argv)
+    if args.command == "hash-password":
+        return _hash_password(args.password)
     _setup_logging()
     try:
         if args.command in (None, "serve"):
@@ -117,7 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_break_glass(args.command))
     except SettingsError as exc:
         missing = sorted({str(e["loc"][0]).upper() for e in exc.errors() if e.get("loc")})
-        print(f"Invalid configuration: {', '.join(missing)}", file=sys.stderr)
+        # Cross-field checks (e.g. no sign-in method) carry no field name; show their message.
+        general = [
+            str(e["msg"]).removeprefix("Value error, ") for e in exc.errors() if not e.get("loc")
+        ]
+        print(f"Invalid configuration: {', '.join(missing + general)}", file=sys.stderr)
         return 2
 
 

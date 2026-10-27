@@ -501,14 +501,18 @@ def test_wildcard_route_can_be_blocked(
 
 
 def test_service_allowlist(settings, fake_cf: FakeCloudflare, oidc, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    import httpx
+    import httpx2
 
     from tests.conftest import csrf_headers, login
     from tunnelgate.app import create_app
     from tunnelgate.config import Settings
 
     monkeypatch.setenv("SERVICE_ALLOWLIST", "*.lan:*,vaultwarden:443")
-    app = create_app(Settings(), cf_transport=httpx.MockTransport(fake_cf.handler))
+    app = create_app(
+        Settings(),
+        cf_transport=httpx2.MockTransport(fake_cf.handler),
+        oidc_transport=oidc.transport,
+    )
     with TestClient(app, base_url=APP, follow_redirects=False) as c:
         login(c, oidc)
         h = csrf_headers(c)
@@ -627,7 +631,7 @@ def test_forced_refresh_is_throttled(
 def test_waf_write_is_retried_when_response_does_not_match(
     client: TestClient, authed: dict[str, str], fake_cf: FakeCloudflare
 ) -> None:
-    import httpx
+    import httpx2
 
     from tests.conftest import ok
 
@@ -636,7 +640,7 @@ def test_waf_write_is_retried_when_response_does_not_match(
     )
     state = {"n": 0}
 
-    def racing(request: httpx.Request) -> httpx.Response:
+    def racing(request: httpx2.Request) -> httpx2.Response:
         resp = fake_cf.handler(request)
         if request.method == "PATCH" and state["n"] == 0:
             state["n"] = 1
@@ -644,7 +648,7 @@ def test_waf_write_is_retried_when_response_does_not_match(
             return ok(fake_cf.rulesets[ZONE_ID])
         return resp
 
-    client.app.state.service.cf._http._transport = httpx.MockTransport(racing)  # type: ignore[attr-defined]
+    client.app.state.service.cf._http._transport = httpx2.MockTransport(racing)  # type: ignore[attr-defined]
     client.post(
         "/api/routes/block",
         json={"hostname": "jellyfin.example.com", "blocked": True},

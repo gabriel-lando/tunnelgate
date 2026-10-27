@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-import httpx
+import httpx2
 
 log = logging.getLogger(__name__)
 
@@ -40,13 +40,13 @@ class CloudflareClient:
         token: str,
         account_id: str,
         base_url: str = "https://api.cloudflare.com/client/v4",
-        transport: httpx.AsyncBaseTransport | None = None,
+        transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         self.account_id = account_id
-        self._http = httpx.AsyncClient(
+        self._http = httpx2.AsyncClient(
             base_url=base_url,
             headers={"Authorization": f"Bearer {token}", "User-Agent": "tunnelgate"},
-            timeout=httpx.Timeout(20.0, connect=10.0),
+            timeout=httpx2.Timeout(20.0, connect=10.0),
             transport=transport,
             follow_redirects=False,
         )
@@ -62,7 +62,7 @@ class CloudflareClient:
             for attempt in range(3):
                 try:
                     resp = await self._http.request(method, path, **kwargs)
-                except httpx.HTTPError as exc:
+                except httpx2.HTTPError as exc:
                     if attempt == 2:
                         raise CloudflareError(502, f"network error: {type(exc).__name__}") from exc
                     await asyncio.sleep(0.5 * 2**attempt)

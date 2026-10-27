@@ -19,7 +19,8 @@ class Session {
 				this.denied = result.denied;
 				return 'denied';
 			}
-			if (path !== '/signed-out') window.location.assign(loginUrl());
+			const onLoginForm = path === '/login' && result.auth === 'password';
+			if (path !== '/signed-out' && !onLoginForm) window.location.assign(loginUrl());
 			return 'anonymous';
 		} catch {
 			this.offline = true;

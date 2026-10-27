@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from tests.conftest import ACCOUNT, FakeCloudflare, make_fake
@@ -18,7 +18,7 @@ def fake(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeCloudflare:
     real = cli.CloudflareClient
 
     def patched(token: str, account: str, base: str) -> object:
-        return real(token, account, base, transport=httpx.MockTransport(fake.handler))
+        return real(token, account, base, transport=httpx2.MockTransport(fake.handler))
 
     monkeypatch.setattr(cli, "CloudflareClient", patched)
     return fake
@@ -96,3 +96,51 @@ def test_healthcheck_access_lines_are_dropped(path: str, status: int, kept: bool
         None,
     )
     assert cli._HealthcheckFilter().filter(record) is kept
+
+
+def test_hash_password_from_stdin(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import io
+
+    from tunnelgate.passwords import verify_password
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(" my pass \n"))
+    assert cli.main(["hash-password"]) == 0
+    captured = capsys.readouterr()
+    assert verify_password(" my pass ", captured.out.strip())
+    assert "Reading the password from stdin" in captured.err
+    assert cli.main(["hash-password", "senha forte"]) == 0
+    assert verify_password("senha forte", capsys.readouterr().out.strip())
+    assert cli.main(["hash-password", ""]) == 1
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n"))
+    assert cli.main(["hash-password"]) == 1
+
+
+def test_hash_password_interactive_mismatch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import io
+
+    answers = iter(["one", "two"])
+    stdin = io.StringIO()
+    stdin.isatty = lambda: True  # type: ignore[method-assign]
+    monkeypatch.setattr("sys.stdin", stdin)
+    monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: next(answers))
+    assert cli.main(["hash-password"]) == 1
+    assert "do not match" in capsys.readouterr().err
+
+
+def test_missing_sign_in_method_is_explained(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    from tests.conftest import APP
+
+    for k in ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "BASIC_AUTH_USERNAME"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("CF_API_TOKEN", "t")
+    monkeypatch.setenv("CF_ACCOUNT_ID", ACCOUNT)
+    monkeypatch.setenv("APP_URL", APP)
+    monkeypatch.setenv("TUNNELGATE_DATA_DIR", str(tmp_path))
+    assert cli.main(["serve"]) == 2
+    assert "configure OIDC" in capsys.readouterr().err
