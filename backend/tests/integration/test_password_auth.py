@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import secrets
+
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import APP, PASSWORD, csrf_headers, password_login
+from tests.conftest import APP, PASSWORD, WRONG_PASSWORD, csrf_headers, password_login
 from tunnelgate.auth import LoginThrottle
 from tunnelgate.store import Store
 
@@ -38,7 +40,7 @@ def test_successful_login_creates_session(password_client: TestClient) -> None:
 
 
 def test_wrong_credentials_are_rejected_and_audited(password_client: TestClient) -> None:
-    for user, pw in (("admin", "wrong"), ("root", PASSWORD), ("admin", PASSWORD.strip())):
+    for user, pw in (("admin", WRONG_PASSWORD), ("root", PASSWORD), ("admin", PASSWORD.strip())):
         resp = password_login(password_client, user, pw)
         assert resp.status_code == 401, (user, pw)
         assert "set-cookie" not in resp.headers
@@ -57,9 +59,9 @@ def test_login_requires_same_origin(password_client: TestClient) -> None:
 def test_login_rejects_bad_bodies(password_client: TestClient) -> None:
     for body in (
         {"username": "admin"},
-        {"username": "", "password": "x"},
-        {"username": "admin", "password": "x", "extra": 1},
-        {"username": "a" * 200, "password": "x"},
+        {"username": "", "password": WRONG_PASSWORD},
+        {"username": "admin", "password": WRONG_PASSWORD, "extra": 1},
+        {"username": "a" * 200, "password": WRONG_PASSWORD},
     ):
         resp = password_client.post("/auth/login", json=body, headers={"Origin": APP})
         assert resp.status_code == 422, body
@@ -67,7 +69,7 @@ def test_login_rejects_bad_bodies(password_client: TestClient) -> None:
 
 def test_repeated_failures_are_throttled(password_client: TestClient) -> None:
     for _ in range(LoginThrottle.free_failures):
-        assert password_login(password_client, password="nope").status_code == 401
+        assert password_login(password_client, password=WRONG_PASSWORD).status_code == 401
     resp = password_login(password_client)
     assert resp.status_code == 429
     assert int(resp.headers["retry-after"]) >= 1
@@ -136,9 +138,10 @@ def test_plain_password_mode(monkeypatch: pytest.MonkeyPatch, fake_cf: object) -
     from tunnelgate.app import create_app
     from tunnelgate.config import Settings
 
+    plain = secrets.token_urlsafe(12)
     monkeypatch.delenv("BASIC_AUTH_PASSWORD_HASH")
-    monkeypatch.setenv("BASIC_AUTH_PASSWORD", "plain-secret")
+    monkeypatch.setenv("BASIC_AUTH_PASSWORD", plain)
     app = create_app(Settings(), cf_transport=httpx.MockTransport(fake_cf.handler))  # type: ignore[attr-defined]
     with TestClient(app, base_url=APP, follow_redirects=False) as c:
         assert password_login(c, password=PASSWORD).status_code == 401
-        assert password_login(c, password="plain-secret").status_code == 204
+        assert password_login(c, password=plain).status_code == 204

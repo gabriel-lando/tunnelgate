@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import secrets
+
 import pytest
 from pydantic import ValidationError
 
 from tests.conftest import ACCOUNT
 from tunnelgate.config import Settings
+
+PLAIN = secrets.token_urlsafe(12)
 
 
 @pytest.fixture
@@ -69,7 +73,7 @@ def password_env(base_env: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     for k in ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "ALLOWED_GROUPS"):
         base_env.delenv(k)
     base_env.setenv("BASIC_AUTH_USERNAME", "admin")
-    base_env.setenv("BASIC_AUTH_PASSWORD", "pw")
+    base_env.setenv("BASIC_AUTH_PASSWORD", PLAIN)
     return base_env
 
 
@@ -82,14 +86,14 @@ def test_password_mode(password_env: pytest.MonkeyPatch) -> None:
     assert s.auth_mode == "password"
     assert s.issuer == s.issuer_origin == s.issuer_host == ""
     assert s.critical_hostnames == {"a.example.com"}
-    assert s.password_check == ("plain", "pw")
+    assert s.password_check == ("plain", PLAIN)
 
 
 def test_both_modes_prefer_oidc(
     base_env: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     base_env.setenv("BASIC_AUTH_USERNAME", "admin")
-    base_env.setenv("BASIC_AUTH_PASSWORD", "pw")
+    base_env.setenv("BASIC_AUTH_PASSWORD", PLAIN)
     assert Settings().auth_mode == "oidc"
     assert "using OIDC" in caplog.text
 
@@ -99,7 +103,7 @@ def test_hash_wins_over_plain(
 ) -> None:
     from tunnelgate.passwords import hash_password
 
-    encoded = hash_password("pw2")
+    encoded = hash_password(secrets.token_urlsafe(12))
     password_env.setenv("BASIC_AUTH_PASSWORD_HASH", encoded)
     assert Settings().password_check == ("hash", encoded)
     assert "using the hash" in caplog.text

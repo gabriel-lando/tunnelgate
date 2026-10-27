@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import time
 import uuid
 from collections.abc import Iterator
@@ -350,7 +351,9 @@ def csrf_headers(client: TestClient) -> dict[str, str]:
     return {"Origin": APP, "X-CSRF-Token": me.json()["csrf_token"]}
 
 
-PASSWORD = " correct horse "
+# Generated per run so no credential literal lives in the repo (secret scanners).
+PASSWORD = f" {secrets.token_urlsafe(12)} "
+WRONG_PASSWORD = secrets.token_urlsafe(12)
 _OIDC_ENV = ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "ALLOWED_GROUPS")
 
 

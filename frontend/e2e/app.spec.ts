@@ -194,6 +194,8 @@ test('authenticated but unauthorized users see the denied page without redirect 
 });
 
 test('password login form signs in and reports bad credentials', async ({ page }) => {
+	const good = crypto.randomUUID();
+	const bad = crypto.randomUUID();
 	let signedIn = false;
 	const attempts: unknown[] = [];
 	await page.route('**/api/**', async (r: PwRoute) => {
@@ -208,23 +210,23 @@ test('password login form signs in and reports bad credentials', async ({ page }
 	await page.route('**/auth/login', async (r) => {
 		const body = r.request().postDataJSON() as { username: string; password: string };
 		attempts.push(body);
-		if (body.password !== 'right') return r.fulfill({ status: 401, json: { detail: 'invalid credentials' } });
+		if (body.password !== good) return r.fulfill({ status: 401, json: { detail: 'invalid credentials' } });
 		signedIn = true;
 		return r.fulfill({ status: 204 });
 	});
 	await page.goto('/login');
 	await page.getByLabel('Username').fill('admin');
-	await page.getByLabel('Password').fill('wrong');
+	await page.getByLabel('Password').fill(bad);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 	await expect(page.getByRole('alert')).toHaveText('Wrong username or password.');
 	await expect(page.getByLabel('Password')).toHaveValue('');
-	await page.getByLabel('Password').fill('right');
+	await page.getByLabel('Password').fill(good);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 	await expect(page).toHaveURL(/\/$/);
 	await expect(page.getByText('apps').first()).toBeVisible();
 	expect(attempts).toEqual([
-		{ username: 'admin', password: 'wrong' },
-		{ username: 'admin', password: 'right' }
+		{ username: 'admin', password: bad },
+		{ username: 'admin', password: good }
 	]);
 });
 
