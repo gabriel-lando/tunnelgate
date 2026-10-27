@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -67,7 +67,8 @@ def _session_secret(settings: Settings) -> str:
 
 def create_app(
     settings: Settings | None = None,
-    cf_transport: httpx.AsyncBaseTransport | None = None,
+    cf_transport: httpx2.AsyncBaseTransport | None = None,
+    oidc_transport: httpx2.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     store = Store(settings.data_dir)
@@ -107,7 +108,7 @@ def create_app(
     app.state.service = service
     app.state.store = store
 
-    app.include_router(auth.build_router(settings, store))
+    app.include_router(auth.build_router(settings, store, oidc_transport))
     app.include_router(api.build_router())
 
     @app.get("/healthz", include_in_schema=False)

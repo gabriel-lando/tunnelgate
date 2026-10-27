@@ -123,8 +123,12 @@ set the password itself in `BASIC_AUTH_PASSWORD`. If both are set, the hash is u
 If OIDC and password variables are both set, OIDC is used and an error is logged.
 
 Password mode has no MFA. After 5 failed attempts, each further attempt waits exponentially longer (up to
-5 minutes); every attempt is in the audit log. Keep the app on your internal network, and consider the
-reverse proxy's forward auth as an extra layer.
+5 minutes). Every checked attempt is in the audit log; requests refused while waiting are logged once per
+wait. Keep the app on your internal network, and consider the reverse proxy's forward auth as an extra layer.
+
+The wait is global, not per client: there is one account and no trustworthy client IP. Anyone who can reach
+the sign-in page can keep it locked by failing once every 5 minutes. The
+[break-glass CLI](#break-glass-cli) keeps working, and a restart clears the counter.
 
 ## Deployment
 
@@ -140,7 +144,8 @@ reach the issuer and `api.cloudflare.com`.
 
 ### Break-glass CLI
 
-If the identity provider or DNS is down, use the CLI from the host (anyone with a shell there already has
+If the identity provider or DNS is down, or password sign-in is locked by repeated failures, use the CLI
+from the host (anyone with a shell there already has
 the token, so this adds no new access path):
 
 ```sh
@@ -163,7 +168,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src
 uv run python scripts/export_openapi.py   # after API changes; update frontend/src/lib/types.ts
 ```
 
-Frontend (Node 24, pnpm via corepack):
+Frontend (Node 26, pnpm via corepack; Node 25+ needs `npm install -g corepack` first):
 
 ```sh
 cd frontend

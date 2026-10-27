@@ -40,13 +40,19 @@ def is_valid_hash(encoded: str) -> bool:
     if not m:
         return False
     n, r, p = (int(x) for x in m.groups()[:3])
-    # Bounds keep a hostile or typo'd hash from exhausting memory or CPU.
+    try:
+        salt, key = _b64d(m.group(4)), _b64d(m.group(5))
+    except ValueError:  # includes binascii.Error
+        return False
+    # Bounds keep a hostile or typo'd hash from exhausting memory or CPU, or being guessable.
     return (
         2**14 <= n <= 2**17
         and n & (n - 1) == 0
         and 1 <= r <= 16
         and 1 <= p <= 4
         and 128 * n * r < _MAXMEM
+        and len(salt) >= 16
+        and 16 <= len(key) <= 64
     )
 
 

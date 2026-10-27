@@ -109,7 +109,8 @@ To verify a published image before running it, see the main [README](../README.m
 
 ## Break-glass
 
-If the identity provider or DNS is down, block everything from the host:
+If the identity provider or DNS is down, or password sign-in is locked by repeated failed attempts (the
+wait is global, so anyone who can reach the sign-in page can keep it locked), use the CLI from the host:
 
 ```sh
 docker compose exec tunnelgate tunnelgate block-all

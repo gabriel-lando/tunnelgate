@@ -41,6 +41,9 @@ fileExistenceTests:
     uid: 10001
     gid: 10001
     permissions: "drwx------"
+  - name: system CA bundle (httpx2 verifies TLS with the OS trust store)
+    path: /etc/ssl/certs/ca-certificates.crt
+    shouldExist: true
   - name: no env files baked in
     path: /app/.env
     shouldExist: false

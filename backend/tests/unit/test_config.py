@@ -124,6 +124,8 @@ def test_plain_password_logs_nothing(
         (("BASIC_AUTH_USERNAME",), {}),
         ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt$1$2"}),
         ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt:1048576:8:1:AAAA:AAAA"}),
+        ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt:16384:8:1:AA:AA"}),
+        ((), {"BASIC_AUTH_PASSWORD_HASH": "scrypt:16384:8:1:a:a"}),
         ((), {"BASIC_AUTH_USERNAME": "bad<user>"}),
         ((), {"BASIC_AUTH_PASSWORD": ""}),
         ((), {"OIDC_ISSUER": "https://auth.example.com"}),

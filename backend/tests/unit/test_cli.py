@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from tests.conftest import ACCOUNT, FakeCloudflare, make_fake
@@ -18,7 +18,7 @@ def fake(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeCloudflare:
     real = cli.CloudflareClient
 
     def patched(token: str, account: str, base: str) -> object:
-        return real(token, account, base, transport=httpx.MockTransport(fake.handler))
+        return real(token, account, base, transport=httpx2.MockTransport(fake.handler))
 
     monkeypatch.setattr(cli, "CloudflareClient", patched)
     return fake

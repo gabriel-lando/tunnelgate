@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastapi.testclient import TestClient
 from joserfc import jwt
 from joserfc.jwk import RSAKey
@@ -32,12 +31,12 @@ ISSUER = "https://auth.example.com"
 INLINE_SCRIPT = "console.log('boot')"
 
 
-def ok(result: Any, **extra: Any) -> httpx.Response:
-    return httpx.Response(200, json={"success": True, "errors": [], "result": result, **extra})
+def ok(result: Any, **extra: Any) -> httpx2.Response:
+    return httpx2.Response(200, json={"success": True, "errors": [], "result": result, **extra})
 
 
-def fail(status: int, code: int = 1000, message: str = "error") -> httpx.Response:
-    return httpx.Response(
+def fail(status: int, code: int = 1000, message: str = "error") -> httpx2.Response:
+    return httpx2.Response(
         status, json={"success": False, "errors": [{"code": code, "message": message}]}
     )
 
@@ -52,9 +51,9 @@ class FakeCloudflare:
     dns: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     rulesets: dict[str, dict[str, Any]] = field(default_factory=dict)
     calls: list[tuple[str, str, Any]] = field(default_factory=list)
-    fail_next: dict[tuple[str, str], httpx.Response] = field(default_factory=dict)
+    fail_next: dict[tuple[str, str], httpx2.Response] = field(default_factory=dict)
 
-    def handler(self, request: httpx.Request) -> httpx.Response:
+    def handler(self, request: httpx2.Request) -> httpx2.Response:
         method, path = request.method, request.url.path.removeprefix("/client/v4")
         body = json.loads(request.content) if request.content else None
         self.calls.append((method, path, body))
@@ -238,6 +237,43 @@ class FakeOidc:
         }
         return jwt.encode({"alg": "RS256", "kid": "test"}, claims, self.key)
 
+    def discovery(self) -> dict[str, Any]:
+        if self.discovery_down:
+            raise httpx2.ConnectError("down")
+        doc = {
+            "issuer": ISSUER,
+            "authorization_endpoint": f"{ISSUER}/api/oidc/authorization",
+            "token_endpoint": f"{ISSUER}/api/oidc/token",
+            "userinfo_endpoint": f"{ISSUER}/api/oidc/userinfo",
+            "jwks_uri": f"{ISSUER}/jwks.json",
+            "id_token_signing_alg_values_supported": ["RS256"],
+        }
+        if self.end_session:
+            doc["end_session_endpoint"] = f"{ISSUER}/api/oidc/end-session"
+        return doc
+
+    def handler(self, request: httpx2.Request) -> httpx2.Response:
+        url = str(request.url.copy_with(query=None))
+        routes: dict[tuple[str, str], Any] = {
+            ("GET", f"{ISSUER}/.well-known/openid-configuration"): self.discovery,
+            ("GET", f"{ISSUER}/jwks.json"): lambda: {"keys": [self.key.as_dict(private=False)]},
+            ("POST", f"{ISSUER}/api/oidc/token"): lambda: {
+                "access_token": "at",
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "id_token": self.id_token(),
+            },
+            ("GET", f"{ISSUER}/api/oidc/userinfo"): lambda: self.userinfo,
+        }
+        route = routes.get((request.method, url))
+        if route is None:
+            return httpx2.Response(404)
+        return httpx2.Response(200, json=route())
+
+    @property
+    def transport(self) -> httpx2.MockTransport:
+        return httpx2.MockTransport(self.handler)
+
 
 def default_claims() -> dict[str, Any]:
     return {"sub": "user-1", "preferred_username": "gabriel", "amr": ["pwd", "otp", "mfa"]}
@@ -253,50 +289,12 @@ def fake_cf() -> FakeCloudflare:
 
 
 @pytest.fixture
-def oidc() -> Iterator[FakeOidc]:
-    provider = FakeOidc(
+def oidc() -> FakeOidc:
+    return FakeOidc(
         key=RSAKey.generate_key(2048, parameters={"kid": "test"}),
         claims=default_claims(),
         userinfo=default_userinfo(),
     )
-    with respx.mock(assert_all_called=False) as mock:
-
-        def discovery(_: httpx.Request) -> httpx.Response:
-            if provider.discovery_down:
-                raise httpx.ConnectError("down")
-            doc = {
-                "issuer": ISSUER,
-                "authorization_endpoint": f"{ISSUER}/api/oidc/authorization",
-                "token_endpoint": f"{ISSUER}/api/oidc/token",
-                "userinfo_endpoint": f"{ISSUER}/api/oidc/userinfo",
-                "jwks_uri": f"{ISSUER}/jwks.json",
-                "id_token_signing_alg_values_supported": ["RS256"],
-            }
-            if provider.end_session:
-                doc["end_session_endpoint"] = f"{ISSUER}/api/oidc/end-session"
-            return httpx.Response(200, json=doc)
-
-        mock.get(f"{ISSUER}/.well-known/openid-configuration").mock(side_effect=discovery)
-        mock.get(f"{ISSUER}/jwks.json").mock(
-            side_effect=lambda _: httpx.Response(
-                200, json={"keys": [provider.key.as_dict(private=False)]}
-            )
-        )
-        mock.post(f"{ISSUER}/api/oidc/token").mock(
-            side_effect=lambda _: httpx.Response(
-                200,
-                json={
-                    "access_token": "at",
-                    "token_type": "Bearer",
-                    "expires_in": 300,
-                    "id_token": provider.id_token(),
-                },
-            )
-        )
-        mock.get(f"{ISSUER}/api/oidc/userinfo").mock(
-            side_effect=lambda _: httpx.Response(200, json=provider.userinfo)
-        )
-        yield provider
 
 
 def write_static(root: Path) -> Path:
@@ -332,12 +330,16 @@ def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
 
 @pytest.fixture
 def client(settings: Settings, fake_cf: FakeCloudflare, oidc: FakeOidc) -> Iterator[TestClient]:
-    app = create_app(settings, cf_transport=httpx.MockTransport(fake_cf.handler))
+    app = create_app(
+        settings,
+        cf_transport=httpx2.MockTransport(fake_cf.handler),
+        oidc_transport=oidc.transport,
+    )
     with TestClient(app, base_url=APP, follow_redirects=False) as c:
         yield c
 
 
-def login(client: TestClient, oidc: FakeOidc) -> httpx.Response:
+def login(client: TestClient, oidc: FakeOidc) -> httpx2.Response:
     start = client.get("/auth/login")
     assert start.status_code in (302, 303, 307), start.text
     query = parse_qs(urlsplit(start.headers["location"]).query)
@@ -386,14 +388,14 @@ def password_settings(
 
 @pytest.fixture
 def password_client(password_settings: Settings, fake_cf: FakeCloudflare) -> Iterator[TestClient]:
-    app = create_app(password_settings, cf_transport=httpx.MockTransport(fake_cf.handler))
+    app = create_app(password_settings, cf_transport=httpx2.MockTransport(fake_cf.handler))
     with TestClient(app, base_url=APP, follow_redirects=False) as c:
         yield c
 
 
 def password_login(
     client: TestClient, username: str = "admin", password: str = PASSWORD
-) -> httpx.Response:
+) -> httpx2.Response:
     return client.post(
         "/auth/login", json={"username": username, "password": password}, headers={"Origin": APP}
     )

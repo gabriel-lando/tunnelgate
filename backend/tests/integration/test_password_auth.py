@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import secrets
 
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import APP, PASSWORD, WRONG_PASSWORD, csrf_headers, password_login
+from tests.conftest import (
+    APP,
+    PASSWORD,
+    WRONG_PASSWORD,
+    FakeCloudflare,
+    csrf_headers,
+    password_login,
+)
+from tunnelgate.app import create_app
 from tunnelgate.auth import LoginThrottle
+from tunnelgate.config import Settings
 from tunnelgate.store import Store
 
 
@@ -73,7 +83,28 @@ def test_repeated_failures_are_throttled(password_client: TestClient) -> None:
     resp = password_login(password_client)
     assert resp.status_code == 429
     assert int(resp.headers["retry-after"]) >= 1
-    assert ("admin", "login", "throttled") in _audit(password_client)
+    for _ in range(50):
+        assert password_login(password_client, "x" * 128).status_code == 429
+    throttled = [row for row in _audit(password_client) if row[2] == "throttled"]
+    assert throttled == [("admin", "login", "throttled")]
+
+
+def test_throttle_survives_long_attacks(
+    monkeypatch: pytest.MonkeyPatch, password_settings: Settings, fake_cf: FakeCloudflare
+) -> None:
+    original = LoginThrottle.__init__
+
+    def init(self: LoginThrottle) -> None:
+        original(self)
+        self.failures = 1028
+
+    monkeypatch.setattr(LoginThrottle, "__init__", init)
+    app = create_app(password_settings, cf_transport=httpx2.MockTransport(fake_cf.handler))
+    with TestClient(app, base_url=APP, raise_server_exceptions=False) as c:
+        assert password_login(c, password=WRONG_PASSWORD).status_code == 401
+        for _ in range(5):
+            assert password_login(c, password=WRONG_PASSWORD).status_code == 429
+        assert password_login(c).status_code == 429
 
 
 def test_throttle_backoff_and_reset() -> None:
@@ -89,6 +120,12 @@ def test_throttle_backoff_and_reset() -> None:
     assert t.retry_after(100.0 + LoginThrottle.max_delay) == 0
     t.succeeded()
     assert t.failures == 0 and t.retry_after(100.0) == 0
+    t.failures = 5000
+    t.failed(100.0)
+    assert t.retry_after(100.0) == LoginThrottle.max_delay
+    assert t.first_rejection() and not t.first_rejection()
+    t.failed(200.0)
+    assert t.first_rejection()
 
 
 def test_api_mutations_still_need_csrf(password_client: TestClient) -> None:
@@ -132,16 +169,11 @@ def test_csp_has_no_identity_provider(password_client: TestClient) -> None:
 
 
 @pytest.mark.usefixtures("password_settings")
-def test_plain_password_mode(monkeypatch: pytest.MonkeyPatch, fake_cf: object) -> None:
-    import httpx
-
-    from tunnelgate.app import create_app
-    from tunnelgate.config import Settings
-
+def test_plain_password_mode(monkeypatch: pytest.MonkeyPatch, fake_cf: FakeCloudflare) -> None:
     plain = secrets.token_urlsafe(12)
     monkeypatch.delenv("BASIC_AUTH_PASSWORD_HASH")
     monkeypatch.setenv("BASIC_AUTH_PASSWORD", plain)
-    app = create_app(Settings(), cf_transport=httpx.MockTransport(fake_cf.handler))  # type: ignore[attr-defined]
+    app = create_app(Settings(), cf_transport=httpx2.MockTransport(fake_cf.handler))
     with TestClient(app, base_url=APP, follow_redirects=False) as c:
         assert password_login(c, password=PASSWORD).status_code == 401
         assert password_login(c, password=plain).status_code == 204

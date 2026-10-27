@@ -22,6 +22,10 @@ def test_invalid_hashes_never_verify() -> None:
         good.replace(":32768:", ":4194304:"),
         good.replace(":8:1:", ":64:1:"),
         good + ":extra",
+        "scrypt:16384:8:1:AA:AA",
+        "scrypt:16384:8:1:a:a",
+        good.rsplit(":", 2)[0] + ":AAAA:" + good.rsplit(":", 1)[1],
+        good.rsplit(":", 1)[0] + ":" + "A" * 88,
     ):
         assert not is_valid_hash(bad), bad
         assert not verify_password("x", bad)

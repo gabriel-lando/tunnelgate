@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode, urlsplit
 
-import httpx
+import httpx2
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -141,10 +141,12 @@ async def _end_session(request: Request, store: Store) -> None:
     request.session.clear()
 
 
-def build_router(settings: Settings, store: Store) -> APIRouter:
+def build_router(
+    settings: Settings, store: Store, transport: httpx2.AsyncBaseTransport | None = None
+) -> APIRouter:
     if settings.auth_mode == "password":
         return _password_router(settings, store)
-    return _oidc_router(settings, store)
+    return _oidc_router(settings, store, transport)
 
 
 class LoginThrottle:
@@ -156,19 +158,29 @@ class LoginThrottle:
     def __init__(self) -> None:
         self.failures = 0
         self.not_before = 0.0
+        self.reported = 0.0
 
     def retry_after(self, now: float) -> int:
         return max(0, math.ceil(self.not_before - now))
 
+    def first_rejection(self) -> bool:
+        """True once per backoff window, so throttled requests cannot flood the audit log."""
+        if self.reported == self.not_before:
+            return False
+        self.reported = self.not_before
+        return True
+
     def failed(self, now: float) -> None:
         self.failures += 1
         if self.failures >= self.free_failures:
-            delay = min(2.0 ** (self.failures - self.free_failures), self.max_delay)
-            self.not_before = now + delay
+            # Capped exponent: an uncapped power overflows after ~1000 failures.
+            exponent = min(self.failures - self.free_failures, 16)
+            self.not_before = now + min(2.0**exponent, self.max_delay)
 
     def succeeded(self) -> None:
         self.failures = 0
         self.not_before = 0.0
+        self.reported = 0.0
 
 
 def check_credentials(settings: Settings, username: str, password: str) -> bool:
@@ -200,7 +212,8 @@ def _password_router(settings: Settings, store: Store) -> APIRouter:
         async with lock:
             wait = throttle.retry_after(time.monotonic())
             if wait:
-                await store.audit(body.username, "login", "tunnelgate", "throttled")
+                if throttle.first_rejection():
+                    await store.audit(body.username, "login", "tunnelgate", "throttled")
                 return JSONResponse(
                     {"detail": "too many attempts", "retry_after": wait},
                     status_code=429,
@@ -228,7 +241,15 @@ def _password_router(settings: Settings, store: Store) -> APIRouter:
     return router
 
 
-def _oidc_router(settings: Settings, store: Store) -> APIRouter:
+def _oidc_router(
+    settings: Settings, store: Store, transport: httpx2.AsyncBaseTransport | None
+) -> APIRouter:
+    client_kwargs: dict[str, Any] = {
+        "scope": "openid profile email groups",
+        "code_challenge_method": "S256",
+    }
+    if transport is not None:
+        client_kwargs["transport"] = transport
     oauth = OAuth()
     oauth.register(
         "oidc",
@@ -237,7 +258,7 @@ def _oidc_router(settings: Settings, store: Store) -> APIRouter:
         if settings.oidc_client_secret
         else None,
         server_metadata_url=f"{settings.issuer}/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid profile email groups", "code_challenge_method": "S256"},
+        client_kwargs=client_kwargs,
     )
     client: Any = oauth.create_client("oidc")
     router = APIRouter(prefix="/auth", include_in_schema=False)
@@ -251,7 +272,7 @@ def _oidc_router(settings: Settings, store: Store) -> APIRouter:
             response: Response = await client.authorize_redirect(
                 request, settings.redirect_uri, max_age=settings.session_max_age
             )
-        except (OAuthError, httpx.HTTPError, ValueError) as exc:
+        except (OAuthError, httpx2.HTTPError, ValueError) as exc:
             log.warning("identity provider unavailable: %s", type(exc).__name__)
             return _error_page(
                 "Sign-in unavailable",
@@ -275,7 +296,7 @@ def _oidc_router(settings: Settings, store: Store) -> APIRouter:
             if settings.oidc_client_id not in auds:
                 raise OAuthError(error="invalid_aud", description="unexpected audience")
             userinfo = await client.userinfo(token=token)
-        except (OAuthError, JoseError, httpx.HTTPError, ValueError, KeyError) as exc:
+        except (OAuthError, JoseError, httpx2.HTTPError, ValueError, KeyError) as exc:
             log.warning("login failed: %s", type(exc).__name__)
             request.session.clear()
             return _error_page(
@@ -325,7 +346,7 @@ def _oidc_router(settings: Settings, store: Store) -> APIRouter:
         try:
             metadata = await client.load_server_metadata()
             end_session = metadata.get("end_session_endpoint")
-        except OAuthError, httpx.HTTPError, ValueError:
+        except OAuthError, httpx2.HTTPError, ValueError:
             end_session = None
         if isinstance(end_session, str) and _same_origin(end_session, settings.issuer_origin):
             query = urlencode(
