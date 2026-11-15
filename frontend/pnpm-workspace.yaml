@@ -5,3 +5,6 @@ minimumReleaseAgeStrict: true
 strictDepBuilds: true
 onlyBuiltDependencies: []
 blockExoticSubdeps: true
+# minimatch 10 has GHSA-g3hv-75wg-m249; eslint already moved to 11, typescript-eslint still asks for 10.
+overrides:
+  minimatch: ^11.0.5
