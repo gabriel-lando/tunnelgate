@@ -1,0 +1,6 @@
+# Reviewed exceptions for frontend/pnpm-lock.yaml; each one expires and must be re-checked.
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+effectiveUntil = 2027-02-14
+reason = "deepmerge has no fixed release; it is only used by @sveltejs/vite-plugin-svelte at build time on our own config and never reaches the bundle."

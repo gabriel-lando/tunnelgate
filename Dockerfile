@@ -39,8 +39,12 @@ ENV PATH=/app/.venv/bin:$PATH \
     TUNNELGATE_DATA_DIR=/data \
     TUNNELGATE_VERSION=${VERSION} \
     TUNNELGATE_COMMIT=${COMMIT}
+# Apply Debian security fixes released after the base image was built.
 # pip is unused at runtime and ships vendored libraries that scanners flag.
-RUN python -m pip uninstall --yes --no-cache-dir pip \
+RUN apt-get update \
+ && apt-get upgrade --yes --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall --yes --no-cache-dir pip \
  && groupadd --system --gid 10001 tunnelgate \
  && useradd --system --uid 10001 --gid tunnelgate --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin tunnelgate \
  && mkdir -p /data \
